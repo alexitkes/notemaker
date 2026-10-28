@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Регистрация — NoteMaker{% endblock %}
+{% block content %}
+<div class="card auth-card">
+    <h1>Регистрация</h1>
+    <p class="muted">
+        Первый зарегистрированный пользователь автоматически становится
+        администратором, остальные получают роль «Гость».
+    </p>
+    <form method="post" novalidate>
+        <div class="form-group">
+            <label for="username">Имя</label>
+            <input type="text" id="username" name="username" placeholder="Иван Иванов" required autofocus>
+        </div>
+        <div class="form-group">
+            <label for="email">Почта</label>
+            <input type="email" id="email" name="email" placeholder="ivan@example.com" required>
+        </div>
+        <div class="form-group">
+            <label for="password">Пароль</label>
+            <input type="password" id="password" name="password" minlength="6" placeholder="Минимум 6 символов" required>
+        </div>
+        <div class="form-group">
+            <label for="password2">Повторите пароль</label>
+            <input type="password" id="password2" name="password2" minlength="6" placeholder="Ещё раз пароль" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>
+    </form>
+    <p class="muted center">Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a></p>
+</div>
+{% endblock %}

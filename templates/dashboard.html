@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Личный кабинет — NoteMaker{% endblock %}
+{% block content %}
+<div class="card">
+    <h1>Здравствуйте, {{ user.username }}!</h1>
+    <p class="muted">Ваш личный кабинет.</p>
+    <dl class="profile">
+        <dt>Имя</dt>
+        <dd>{{ user.username }}</dd>
+        <dt>Почта</dt>
+        <dd>{{ user.email }}</dd>
+        <dt>Роль</dt>
+        <dd><span class="badge badge-{{ user.role }}">{{ role_labels[user.role] }}</span></dd>
+    </dl>
+
+    {% if user.role == 'administrator' %}
+        <p>
+            <a href="{{ url_for('admin_users') }}" class="btn btn-primary">
+                Управление пользователями
+            </a>
+        </p>
+    {% elif user.role == 'guest' %}
+        <p class="muted">
+            Ваша учётная запись пока имеет гостевой статус. Дождитесь, пока
+            администратор назначит вам роль.
+        </p>
+    {% else %}
+        <p class="muted">Пользуйтесь системой.</p>
+    {% endif %}
+</div>
+{% endblock %}

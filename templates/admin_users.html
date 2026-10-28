@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Пользователи — NoteMaker{% endblock %}
+{% block content %}
+<h1>Список пользователей</h1>
+<div class="card table-card">
+    <table class="users-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Имя</th>
+                <th>Почта</th>
+                <th>Текущая роль</th>
+                <th>Изменить роль</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <td>{{ u.email }}</td>
+                <td><span class="badge badge-{{ u.role }}">{{ role_labels[u.role] }}</span></td>
+                <td>
+                    <form method="post" action="{{ url_for('admin_change_role', user_id=u.id) }}" class="role-form">
+                        <select name="role" {% if u.id == current_user.id %}disabled{% endif %}>
+                            {% for role, label in role_labels.items() %}
+                                <option value="{{ role }}" {% if u.role == role %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn btn-small" {% if u.id == current_user.id %}disabled{% endif %}>
+                            Сохранить
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="muted">Собственную роль изменить нельзя — это защита от случайной потери прав администратора.</p>
+{% endblock %}

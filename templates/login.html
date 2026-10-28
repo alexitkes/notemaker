@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Вход — NoteMaker{% endblock %}
+{% block content %}
+<div class="card auth-card">
+    <h1>Вход</h1>
+    <form method="post" novalidate>
+        <div class="form-group">
+            <label for="email">Почта</label>
+            <input type="email" id="email" name="email" placeholder="ivan@example.com" required autofocus>
+        </div>
+        <div class="form-group">
+            <label for="password">Пароль</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Войти</button>
+    </form>
+    <p class="muted center">Нет аккаунта? <a href="{{ url_for('register') }}">Зарегистрируйтесь</a></p>
+</div>
+{% endblock %}
