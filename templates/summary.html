@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Краткое содержание статьи — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <h1>Краткое содержание статьи</h1>
+    <p class="muted">
+        Загрузите статью в формате PDF. Сервис извлечёт из неё текстовое
+        содержимое и передаст языковой модели для составления краткого
+        содержания (не более 4000 символов).
+    </p>
+
+    <form method="POST" enctype="multipart/form-data" class="upload-form">
+        <div class="form-group">
+            <label for="article">Файл статьи (PDF)</label>
+            <input type="file" id="article" name="article"
+                   accept=".pdf,application/pdf" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            Сформировать краткое содержание
+        </button>
+    </form>
+</div>
+
+{% if error %}
+    <div class="card">
+        <div class="flash flash-error">{{ error }}</div>
+    </div>
+{% endif %}
+
+{% if result %}
+    <div class="card">
+        <h2>Краткое содержание</h2>
+        <p class="muted">
+            Модель: {{ model_name }} ({{ llm_type_label }})
+            {% if truncated %} · текст статьи был обрезан до допустимого размера{% endif %}
+        </p>
+        <div class="summary-text">{{ result }}</div>
+    </div>
+{% endif %}
+
+{% endblock %}

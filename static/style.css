@@ -301,6 +301,26 @@ h1 {
     width: 180px;
 }
 
+/* ---------- Краткое содержание статьи ---------- */
+.card + .card {
+    margin-top: 20px;
+}
+
+.upload-form {
+    margin: 20px 0 4px;
+}
+
+.summary-text {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    line-height: 1.65;
+    margin-top: 12px;
+    padding: 16px;
+    background: #f9fafb;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
 /* ---------- Подвал ---------- */
 .footer {
     border-top: 1px solid var(--border);
