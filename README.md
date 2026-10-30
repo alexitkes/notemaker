@@ -34,14 +34,23 @@ python app.py
 ## Настройка языковой модели (.env)
 
 Параметры обращения к языковой модели задаются в файле `.env`
-(создайте его по образцу `.env.example`):
+(создайте его по образцу `.env.example`). Каждый тип LLM использует
+свой набор переменных, поэтому для переключения между сервисами
+достаточно изменить `LLM_API_TYPE` — ключи доступа хранятся независимо:
 
 | Переменная        | Описание                                                                                               |
 |-------------------|--------------------------------------------------------------------------------------------------------|
 | `LLM_API_TYPE`    | Тип API: `openai` (OpenAI-совместимый) или `gigachat`                                                  |
-| `LLM_API_URL`     | URL для обращения к модели. По умолчанию `https://api.proxyapi.ru/openai/v1` (ProxyAPI) для OpenAI-совместимого API и `https://gigachat.devices.sberbank.ru/api/v1` для GigaChat |
-| `LLM_MODEL`       | Название модели (по умолчанию `gpt-4o-mini` для OpenAI, `GigaChat-20` для GigaChat)                    |
-| `LLM_API_TOKEN`   | Токен доступа: API-ключ для OpenAI-совместимых сервисов, ключ разработчика (base64) для GigaChat       |
+| `OPENAI_API_KEY`  | API-ключ для OpenAI-совместимых сервисов                                                               |
+| `OPENAI_API_URL`  | URL OpenAI-совместимого API (по умолчанию `https://api.proxyapi.ru/openai/v1` — ProxyAPI)              |
+| `OPENAI_MODEL`    | Название модели (по умолчанию `gpt-4o-mini`)                                                           |
+| `GIGACHAT_API_KEY`| Ключ разработчика GigaChat (строка в формате base64)                                                   |
+| `GIGACHAT_API_URL`| URL GigaChat (по умолчанию `https://gigachat.devices.sberbank.ru/api/v1`)                              |
+| `GIGACHAT_MODEL`  | Название модели GigaChat (по умолчанию `GigaChat-2`)                                                   |
+
+Валидация окружения выполняется в модуле `config.py`: если `LLM_API_TYPE`
+имеет недопустимое значение или не задан ключ доступа для выбранного типа
+LLM, приложение завершится с понятным сообщением об ошибке.
 
 Обращение к OpenAI-совместимому API выполняется через
 `POST {LLM_API_URL}/chat/completions`, для GigaChat access_token получается
@@ -58,6 +67,8 @@ venv/bin/pip install -r requirements.txt
 
 ```
 app.py                    # приложение, маршруты, модели
+config.py                 # загрузка и проверка переменных окружения
+llm_service.py            # сервис языковой модели (промпт, запросы)
 templates/
     base.html             # базовый шаблон
     register.html         # регистрация

@@ -1,54 +1,32 @@
 """Сервис взаимодействия с языковой моделью.
 
-В этом модуле сосредоточены: конфигурация языковой модели (тип API, URL,
-модель, токен, параметры генерации, ограничения размера текста), системный
-промпт и функция получения краткого содержания статьи.
+В этом модуле сосредоточены: работа с конфигурацией языковой модели
+(читается и проверяется в модуле config), параметры генерации,
+системный промпт и функция получения краткого содержания статьи.
 """
 
 import base64
-import os
 import time
 import uuid
 
 import requests
-from dotenv import load_dotenv
 
-# Загружаем переменные окружения из файла .env (LLM_API_TYPE, LLM_API_URL и т. д.)
-load_dotenv()
-
-# ---------------------------------------------------------------------------
-# Настройки языковой модели (значения читаются из файла .env)
-# ---------------------------------------------------------------------------
-# Тип API: "openai" (OpenAI-совместимый) или "gigachat"
-LLM_API_TYPE = os.environ.get("LLM_API_TYPE", "openai").strip().lower()
-LLM_API_URL = os.environ.get("LLM_API_URL", "").strip()
-LLM_MODEL = os.environ.get("LLM_MODEL", "").strip()
-LLM_API_TOKEN = os.environ.get("LLM_API_TOKEN", "").strip()
-
-# Значения по умолчанию: для OpenAI-совместимого API — сервис ProxyAPI,
-# для GigaChat — основной сервер GigaChat
-DEFAULT_LLM_URL = {
-    "openai": "https://api.proxyapi.ru/openai/v1",
-    "gigachat": "https://gigachat.devices.sberbank.ru/api/v1",
-}
-DEFAULT_LLM_MODEL = {
-    "openai": "gpt-4o-mini",
-    "gigachat": "GigaChat-2",
-}
-if LLM_API_TYPE not in DEFAULT_LLM_URL:
-    LLM_API_TYPE = "openai"
-if not LLM_API_URL:
-    LLM_API_URL = DEFAULT_LLM_URL[LLM_API_TYPE]
-if not LLM_MODEL:
-    LLM_MODEL = DEFAULT_LLM_MODEL[LLM_API_TYPE]
-
-# OAuth-эндпоинт GigaChat для получения access_token
-GIGACHAT_OAUTH_URL = os.environ.get(
-    "GIGACHAT_OAUTH_URL", "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+# Конфигурация (тип API, URL, модель, ключ доступа и т. д.) загружается
+# и проверяется в модуле config
+from config import (
+    GIGACHAT_OAUTH_URL,
+    LLM_API_TOKEN,
+    LLM_API_TYPE,
+    LLM_API_URL,
+    LLM_MODEL,
+    MAX_LLM_INPUT_CHARS,
+    ConfigError,
 )
 
-# Ограничения по размеру текста: максимум на вход модели и максимум сводки
-MAX_LLM_INPUT_CHARS = int(os.environ.get("MAX_LLM_INPUT_CHARS", "24000"))
+# Для совместимости: ошибка конфигурации LLM — это ConfigError из config
+LLMConfigError = ConfigError
+
+# Ограничение размера сводки
 SUMMARY_MAX_CHARS = 4000
 
 # Параметры генерации ответа модели
@@ -70,10 +48,6 @@ SYSTEM_PROMPT = """Ты — ассистент, который составля�
 
 
 
-class LLMConfigError(Exception):
-    """Ошибка конфигурации языковой модели (например, не задан токен)."""
-
-
 class LLMRequestError(Exception):
     """Ошибка обращения к API языковой модели."""
 
@@ -84,12 +58,7 @@ def get_gigachat_token() -> str:
     if cached["access_token"] and time.time() < cached["expires_at"] - 60:
         return cached["access_token"]
 
-    if not LLM_API_TOKEN:
-        raise LLMConfigError(
-            "Для работы с GigaChat укажите LLM_API_TOKEN (ключ разработчика "
-            "в формате base64) в файле .env."
-        )
-
+    # Наличие ключа уже проверено в config.py
     auth_header = base64.b64encode(LLM_API_TOKEN.encode()).decode()
     try:
         response = requests.post(
@@ -154,11 +123,6 @@ def summarize_article(article_text: str) -> tuple[str, bool]:
 
     Возвращает кортеж (краткое_содержание, был_ли_обрезан_исходный_текст).
     """
-    if not LLM_API_TOKEN:
-        raise LLMConfigError(
-            "Не задан токен доступа. Укажите LLM_API_TOKEN в файле .env."
-        )
-
     truncated = False
     if len(article_text) > MAX_LLM_INPUT_CHARS:
         article_text = article_text[:MAX_LLM_INPUT_CHARS]

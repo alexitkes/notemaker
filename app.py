@@ -1,7 +1,6 @@
 import io
 import os
 
-from dotenv import load_dotenv
 from pypdf import PdfReader
 from flask import (
     Flask,
@@ -15,24 +14,22 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# Конфигурация языковой модели, системный промпт и функция получения
+# Конфигурация (переменные окружения) загружается и проверяется в модуле
+# config; конфигурация языковой модели, системный промпт и функция получения
 # краткого содержания статьи вынесены в отдельный модуль llm_service
+from config import LLM_API_TYPE, LLM_MODEL, SECRET_KEY
 from llm_service import (
-    LLM_API_TYPE,
-    LLM_MODEL,
     LLMConfigError,
     LLMRequestError,
     summarize_article,
 )
 
-# Загружаем переменные окружения из файла .env (LLM_API_TYPE, LLM_API_URL и т. д.)
-load_dotenv()
-
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 app = Flask(__name__)
-# В продакшене обязательно задайте свой SECRET_KEY через переменную окружения
-app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-key-change-me")
+# Секретный ключ читается из окружения в config.py (в продакшене обязательно
+# задайте свой SECRET_KEY через переменную окружения)
+app.secret_key = SECRET_KEY
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "users.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
