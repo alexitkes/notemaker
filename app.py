@@ -11,13 +11,14 @@ from flask import (
     session,
     url_for,
 )
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import check_password_hash, generate_password_hash
-
 # Конфигурация (переменные окружения) загружается и проверяется в модуле
 # config; конфигурация языковой модели, системный промпт и функция получения
 # краткого содержания статьи вынесены в отдельный модуль llm_service
 from config import LLM_API_TYPE, LLM_MODEL, SECRET_KEY
+
+# Модели базы данных (db, User) определены в db_models.py и используются
+# также вспомогательными скриптами (change_password.py)
+from db_models import User, db
 from llm_service import (
     LLMConfigError,
     LLMRequestError,
@@ -33,7 +34,7 @@ app.secret_key = SECRET_KEY
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(BASE_DIR, "users.db")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-db = SQLAlchemy(app)
+db.init_app(app)
 
 # Ограничение: размер загружаемого PDF (10 МБ)
 app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
@@ -46,20 +47,6 @@ ROLE_LABELS = {
     "student": "Студент",
     "teacher": "Преподаватель",
 }
-
-
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(256), nullable=False)
-    role = db.Column(db.String(20), nullable=False, default="guest")
-
-    def set_password(self, raw_password: str) -> None:
-        self.password_hash = generate_password_hash(raw_password)
-
-    def check_password(self, raw_password: str) -> bool:
-        return check_password_hash(self.password_hash, raw_password)
 
 
 def get_current_user():
