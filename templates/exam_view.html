@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ exam.title }} — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="exams-header">
+        <h1>{{ exam.title }}</h1>
+        <span class="badge badge-published">Сформирован</span>
+    </div>
+    <p class="muted">
+        Автор: {{ exam.author.username if exam.author else '—' }} ·
+        Создан: {{ exam.created_at.strftime('%d.%m.%Y %H:%M') }} ·
+        Вопросов: {{ exam.questions|length }}
+    </p>
+    <a href="{{ url_for('exams') }}" class="btn btn-small">К списку экзаменов</a>
+</div>
+
+{% for question in exam.questions %}
+    <div class="card exam-question-card">
+        <h3>Вопрос {{ loop.index }}</h3>
+        <div class="exam-question-text">{{ question.question_text }}</div>
+        <h4>Правильный ответ</h4>
+        <div class="exam-answer-text">{{ question.answer_text }}</div>
+    </div>
+{% endfor %}
+
+{% endblock %}

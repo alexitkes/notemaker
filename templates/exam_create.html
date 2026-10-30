@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Создание экзамена — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <h1>Создание экзамена</h1>
+    <p class="muted">
+        Укажите название экзамена и загрузите статью в формате PDF.
+        Языковая модель сгенерирует {{ question_count }} вопросов на усвоение
+        материала статьи с правильными ответами. После генерации вы сможете
+        исправить их вручную или заменить отдельные вопросы — экзамен
+        останется черновиком, пока вы не завершите работу над ним.
+    </p>
+
+    <form method="POST" enctype="multipart/form-data" class="upload-form">
+        <div class="form-group">
+            <label for="title">Название экзамена</label>
+            <input type="text" id="title" name="title"
+                   placeholder="Например: Основы машинного обучения"
+                   maxlength="200" required>
+        </div>
+        <div class="form-group">
+            <label for="article">Файл статьи (PDF)</label>
+            <input type="file" id="article" name="article"
+                   accept=".pdf,application/pdf" required>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            Сгенерировать вопросы и ответы
+        </button>
+    </form>
+</div>
+
+{% endblock %}

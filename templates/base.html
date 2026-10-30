@@ -14,6 +14,7 @@
             {% if current_user %}
                 <a href="{{ url_for('index') }}">Личный кабинет</a>
                 <a href="{{ url_for('summary') }}">Краткое содержание</a>
+                <a href="{{ url_for('exams') }}">Экзамены</a>
                 {% if current_user.role == 'administrator' %}
                     <a href="{{ url_for('admin_users') }}">Пользователи</a>
                 {% endif %}

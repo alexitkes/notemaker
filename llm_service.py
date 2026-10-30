@@ -6,6 +6,7 @@
 """
 
 import base64
+import re
 import time
 import uuid
 
@@ -29,6 +30,9 @@ LLMConfigError = ConfigError
 # Ограничение размера сводки
 SUMMARY_MAX_CHARS = 4000
 
+# Количество вопросов, генерируемых для экзамена по статье
+EXAM_QUESTION_COUNT = 5
+
 # Параметры генерации ответа модели
 TEMPERATURE = 0.3
 REQUEST_TIMEOUT = 120
@@ -44,6 +48,26 @@ SYSTEM_PROMPT = """Ты — ассистент, который составля�
 Выдели основную идею, ключевые тезисы и выводы. Отвечай только текстом краткого содержания."
 
 Независимо от языка исходной статьи, отвечай по-русски.
+"""
+
+# Системный промпт для генерации экзаменационных вопросов по статье.
+# Плейсхолдер {count} подставляется при вызове модели.
+EXAM_SYSTEM_PROMPT = """Ты — опытный преподаватель, который составляет экзаменационные вопросы для проверки усвоения материала статьи.
+
+Прочитай текст статьи и сгенерируй ровно {count} вопросов на усвоение материала этой статьи с правильными ответами на них.
+
+Каждый вопрос должен проверять понимание существенных идей, фактов или выводов статьи, а ответ должен быть кратким, но содержательным (2–4 предложения).
+
+Строго соблюдай формат вывода — для каждого вопроса используй маркеры [ВОПРОС] и [ОТВЕТ]:
+
+[ВОПРОС]
+Текст вопроса
+[ОТВЕТ]
+Текст правильного ответа
+
+Не добавляй ничего сверх вопросов и ответов: никаких заголовков, вступлений или нумерации вне маркеров.
+
+Независимо от языка исходной статьи, формулируй вопросы и ответы по-русски.
 """
 
 
@@ -131,3 +155,46 @@ def summarize_article(article_text: str) -> tuple[str, bool]:
     system_prompt = SYSTEM_PROMPT.format(max_chars=SUMMARY_MAX_CHARS)
     result = ask_llm(system_prompt, "Текст статьи:\n\n" + article_text)
     return result[:SUMMARY_MAX_CHARS], truncated
+
+
+def _parse_questions(raw_response: str) -> list[tuple[str, str]]:
+    """Разбирает ответ модели в список пар (вопрос, ответ).
+
+    Ожидается формат с маркерами [ВОПРОС] и [ОТВЕТ] (см. EXAM_SYSTEM_PROMPT).
+    Если модель нарушила формат, выбрасывается LLMRequestError.
+    """
+    pattern = re.compile(
+        r"\[ВОПРОС\]\s*(.*?)\s*\[ОТВЕТ\]\s*(.*?)(?=\[ВОПРОС\]|$)",
+        re.DOTALL,
+    )
+    pairs = []
+    for match in pattern.finditer(raw_response):
+        question = match.group(1).strip()
+        answer = match.group(2).strip()
+        if question and answer:
+            pairs.append((question, answer))
+    if not pairs:
+        raise LLMRequestError(
+            "Модель вернула ответ в неожиданном формате: не удалось "
+            "выделить вопросы и ответы. Попробуйте повторить запрос."
+        )
+    return pairs
+
+
+def generate_exam_questions(
+    article_text: str,
+    count: int = EXAM_QUESTION_COUNT,
+) -> tuple[list[tuple[str, str]], bool]:
+    """Генерирует экзаменационные вопросы и ответы на статью.
+
+    Возвращает кортеж (список пар (вопрос, ответ), был_ли_обрезан_текст).
+    """
+    truncated = False
+    if len(article_text) > MAX_LLM_INPUT_CHARS:
+        article_text = article_text[:MAX_LLM_INPUT_CHARS]
+        truncated = True
+
+    system_prompt = EXAM_SYSTEM_PROMPT.format(count=count)
+    result = ask_llm(system_prompt, "Текст статьи:\n\n" + article_text)
+    pairs = _parse_questions(result)
+    return pairs, truncated

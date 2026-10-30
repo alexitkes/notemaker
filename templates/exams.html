@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Экзамены — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="exams-header">
+        <h1>Экзамены</h1>
+        {% if current_user.role == 'teacher' %}
+            <a href="{{ url_for('exam_create') }}" class="btn btn-primary">
+                Создать экзамен
+            </a>
+        {% endif %}
+    </div>
+    <p class="muted">
+        Здесь собраны экзамены по статьям: вопросы и ответы к ним
+        генерирует языковая модель, после чего преподаватель проверяет
+        и исправляет их вручную.
+    </p>
+</div>
+
+{% if drafts %}
+    <div class="card">
+        <h2>Мои черновики</h2>
+        <p class="muted">
+            Черновики видны только вам. Экзамен остаётся черновиком, пока вы
+            не завершите работу над ним.
+        </p>
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Вопросов</th>
+                    <th>Создан</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exam in drafts %}
+                    <tr>
+                        <td>{{ exam.title }}</td>
+                        <td>{{ exam.questions|length }}</td>
+                        <td>{{ exam.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td>
+                            <a href="{{ url_for('exam_edit', exam_id=exam.id) }}"
+                               class="btn btn-small btn-primary">Продолжить редактирование</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+
+<div class="card">
+    <h2>Сформированные экзамены</h2>
+    {% if published %}
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Автор</th>
+                    <th>Вопросов</th>
+                    <th>Создан</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exam in published %}
+                    <tr>
+                        <td>{{ exam.title }}</td>
+                        <td>{{ exam.author.username if exam.author else '—' }}</td>
+                        <td>{{ exam.questions|length }}</td>
+                        <td>{{ exam.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                        <td>
+                            <a href="{{ url_for('exam_view', exam_id=exam.id) }}"
+                               class="btn btn-small">Просмотреть</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">Пока нет ни одного сформированного экзамена.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

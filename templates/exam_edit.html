@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Редактирование экзамена — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="exams-header">
+        <h1>{{ exam.title }}</h1>
+        <span class="badge badge-draft">Черновик</span>
+    </div>
+    <p class="muted">
+        Исправляйте вопросы и ответы вручную, удаляйте неудачные вопросы —
+        вместо удалённого языковая модель сгенерирует новый. Когда работа
+        будет закончена, нажмите «Завершить работу над экзаменом»: после
+        этого экзамен будет сформирован и больше не изменится.
+    </p>
+    <div class="exams-header">
+        <a href="{{ url_for('exams') }}" class="btn btn-small">К списку экзаменов</a>
+        <form method="POST"
+              action="{{ url_for('exam_publish', exam_id=exam.id) }}"
+              onsubmit="return confirm('Завершить работу над экзаменом? После этого он больше не редактируется.');">
+            <button type="submit" class="btn btn-primary">
+                Завершить работу над экзаменом
+            </button>
+        </form>
+    </div>
+</div>
+
+{% for question in exam.questions %}
+    <div class="card exam-question-card">
+        <h3>Вопрос {{ loop.index }}</h3>
+        <form method="POST"
+              action="{{ url_for('exam_edit_question', exam_id=exam.id, question_id=question.id) }}">
+            <div class="form-group">
+                <label for="question-{{ question.id }}">Вопрос</label>
+                <textarea id="question-{{ question.id }}" name="question_text"
+                          rows="3" required>{{ question.question_text }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="answer-{{ question.id }}">Правильный ответ</label>
+                <textarea id="answer-{{ question.id }}" name="answer_text"
+                          rows="3">{{ question.answer_text }}</textarea>
+            </div>
+            <div class="exam-question-actions">
+                <button type="submit" class="btn btn-small btn-primary">Сохранить</button>
+            </div>
+        </form>
+        <form method="POST"
+              action="{{ url_for('exam_delete_question', exam_id=exam.id, question_id=question.id) }}"
+              onsubmit="return confirm('Удалить этот вопрос? Вместо него будет сгенерирован новый вопрос.');">
+            <button type="submit" class="btn btn-small btn-danger">
+                Удалить и сгенерировать новый
+            </button>
+        </form>
+    </div>
+{% endfor %}
+
+{% endblock %}
