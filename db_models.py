@@ -20,6 +20,10 @@ db = SQLAlchemy()
 EXAM_STATUS_DRAFT = "draft"
 EXAM_STATUS_PUBLISHED = "published"
 
+# Статусы попытки сдачи экзамена студентом
+ATTEMPT_STATUS_IN_PROGRESS = "in_progress"
+ATTEMPT_STATUS_COMPLETED = "completed"
+
 
 class User(db.Model):
     """Пользователь системы."""
@@ -88,3 +92,62 @@ class ExamQuestion(db.Model):
     position = db.Column(db.Integer, nullable=False, default=0)
     question_text = db.Column(db.Text, nullable=False)
     answer_text = db.Column(db.Text, nullable=False, default="")
+
+
+class ExamAttempt(db.Model):
+    """Попытка студента сдать экзамен.
+
+    Пока попытка in_progress — студент видит вопросы, но не ответы и
+    не статью; после оценки моделью (completed) сохраняется итоговая
+    оценка за экзамен.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    exam_id = db.Column(
+        db.Integer, db.ForeignKey("exam.id"), nullable=False, index=True
+    )
+    student_id = db.Column(
+        db.Integer, db.ForeignKey("user.id"), nullable=False, index=True
+    )
+    status = db.Column(
+        db.String(20),
+        nullable=False,
+        default=ATTEMPT_STATUS_IN_PROGRESS,
+        index=True,
+    )
+    # Среднее арифметическое оценок за вопросы; заполняется при завершении
+    score = db.Column(db.Float, nullable=True)
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=datetime.utcnow
+    )
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    exam = db.relationship("Exam", backref="attempts")
+    student = db.relationship("User", backref="exam_attempts")
+    answers = db.relationship(
+        "ExamAttemptAnswer",
+        backref="attempt",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    __table_args__ = (
+        # Один студент сдаёт конкретный экзамен один раз
+        db.UniqueConstraint("exam_id", "student_id", name="uq_attempt_exam_student"),
+    )
+
+
+class ExamAttemptAnswer(db.Model):
+    """Ответ студента на вопрос экзамена и оценка за него (1–5)."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    attempt_id = db.Column(
+        db.Integer, db.ForeignKey("exam_attempt.id"), nullable=False, index=True
+    )
+    question_id = db.Column(
+        db.Integer, db.ForeignKey("exam_question.id"), nullable=False, index=True
+    )
+    answer_text = db.Column(db.Text, nullable=False, default="")
+    grade = db.Column(db.Integer, nullable=True)
+
+    question = db.relationship("ExamQuestion")

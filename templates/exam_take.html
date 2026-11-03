@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Сдача экзамена: {{ exam.title }} — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="exams-header">
+        <h1>{{ exam.title }}</h1>
+        <span class="badge badge-draft">Экзамен идёт</span>
+    </div>
+    <p class="muted">
+        Ответьте на все вопросы. Статья и ответы на вопросы скрыты
+        до окончания экзамена. Когда ответы на все вопросы будут введены,
+        нажмите кнопку «Сдать ответы» — после этого экзамен будет завершён
+        и вам будет выставлена оценка.
+    </p>
+</div>
+
+<form method="post" action="{{ url_for('exam_submit', exam_id=exam.id) }}">
+    {% for question in exam.questions %}
+        <div class="card exam-question-card">
+            <h3>Вопрос {{ loop.index }}</h3>
+            <div class="exam-question-text">{{ question.question_text }}</div>
+            <h4><label for="answer-{{ question.id }}">Ваш ответ</label></h4>
+            <textarea
+                id="answer-{{ question.id }}"
+                name="answer_{{ question.id }}"
+                class="exam-answer-input"
+                rows="4"
+                required
+            ></textarea>
+        </div>
+    {% endfor %}
+
+    <div class="card exam-submit-card">
+        <button type="submit" class="btn btn-primary">Сдать ответы</button>
+    </div>
+</form>
+
+{% endblock %}

@@ -391,6 +391,47 @@ h1 {
     background: #fee2e2;
 }
 
+/* ---------- Сдача экзамена ---------- */
+.exam-article-text {
+    white-space: pre-wrap;
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    max-height: 480px;
+    overflow-y: auto;
+}
+
+.exam-answer-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font: inherit;
+    resize: vertical;
+}
+
+.exam-answer-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.exam-start-form {
+    margin-top: 16px;
+}
+
+.exam-submit-card {
+    text-align: right;
+}
+
+.exam-result-card .exam-score {
+    font-size: 1.2rem;
+}
+
+.exam-grade {
+    margin: 10px 0 0;
+}
+
 /* ---------- Подвал ---------- */
 .footer {
     border-top: 1px solid var(--border);

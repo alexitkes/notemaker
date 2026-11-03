@@ -72,8 +72,13 @@
                         <td>{{ exam.questions|length }}</td>
                         <td>{{ exam.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
                         <td>
-                            <a href="{{ url_for('exam_view', exam_id=exam.id) }}"
-                               class="btn btn-small">Просмотреть</a>
+                            {% if current_user.role == 'student' %}
+                                <a href="{{ url_for('exam_view', exam_id=exam.id) }}"
+                                   class="btn btn-small btn-primary">Сдать экзамен</a>
+                            {% else %}
+                                <a href="{{ url_for('exam_view', exam_id=exam.id) }}"
+                                   class="btn btn-small">Просмотреть</a>
+                            {% endif %}
                         </td>
                     </tr>
                 {% endfor %}

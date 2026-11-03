@@ -1,5 +1,6 @@
 import io
 import os
+from datetime import datetime
 
 from pypdf import PdfReader
 from flask import (
@@ -19,9 +20,13 @@ from config import LLM_API_TYPE, LLM_MODEL, SECRET_KEY
 # Модели базы данных (db, User) определены в db_models.py и используются
 # также вспомогательными скриптами (change_password.py)
 from db_models import (
+    ATTEMPT_STATUS_COMPLETED,
+    ATTEMPT_STATUS_IN_PROGRESS,
     EXAM_STATUS_DRAFT,
     EXAM_STATUS_PUBLISHED,
     Exam,
+    ExamAttempt,
+    ExamAttemptAnswer,
     ExamQuestion,
     User,
     db,
@@ -31,6 +36,7 @@ from llm_service import (
     LLMConfigError,
     LLMRequestError,
     generate_exam_questions,
+    grade_exam_answers,
     summarize_article,
 )
 
@@ -282,7 +288,12 @@ def exam_create():
 
 @app.route("/exams/<int:exam_id>")
 def exam_view(exam_id):
-    """Просмотр сформированного экзамена (для всех пользователей)."""
+    """Просмотр сформированного экзамена.
+
+    Студент видит статью, но не вопросы и ответы; если экзамен уже
+    сдан — результат со своими ответами, оценками и статьёй.
+    Преподаватели и администраторы видят вопросы с правильными ответами.
+    """
     user, redirect_response = _require_login()
     if redirect_response is not None:
         return redirect_response
@@ -294,7 +305,150 @@ def exam_view(exam_id):
     if exam.is_draft and exam.created_by != user.id:
         flash("Доступ запрещён: черновик виден только его автору.", "error")
         return redirect(url_for("exams"))
-    return render_template("exam_view.html", exam=exam)
+
+    attempt = None
+    answers_by_question = {}
+    if user.role == "student":
+        attempt = (
+            ExamAttempt.query.filter_by(exam_id=exam.id, student_id=user.id)
+            .order_by(ExamAttempt.id.desc())
+            .first()
+        )
+        if attempt is not None:
+            if attempt.status == ATTEMPT_STATUS_IN_PROGRESS:
+                # Экзамен уже начат: статья скрыта, продолжаем сдачу
+                return redirect(url_for("exam_take", exam_id=exam.id))
+            answers_by_question = {
+                answer.question_id: answer for answer in attempt.answers
+            }
+    return render_template(
+        "exam_view.html",
+        exam=exam,
+        attempt=attempt,
+        answers_by_question=answers_by_question,
+    )
+
+
+def _get_published_exam_for_student(exam_id: int, user):
+    """Возвращает опубликованный экзамен для сдачи студентом.
+
+    При недоступности возвращает (None, ответ_с_перенаправлением).
+    """
+    if user.role != "student":
+        flash("Сдавать экзамены могут только студенты.", "error")
+        return None, redirect(url_for("exams"))
+    exam = db.session.get(Exam, exam_id)
+    if exam is None:
+        flash("Экзамен не найден.", "error")
+        return None, redirect(url_for("exams"))
+    if exam.is_draft:
+        flash("Этот экзамен ещё не сформирован.", "info")
+        return None, redirect(url_for("exams"))
+    return exam, None
+
+
+def _get_own_attempt(exam_id: int, user):
+    """Возвращает незавершённую попытку сдачи экзамена текущим студентом."""
+    return ExamAttempt.query.filter_by(
+        exam_id=exam_id,
+        student_id=user.id,
+        status=ATTEMPT_STATUS_IN_PROGRESS,
+    ).first()
+
+
+@app.route("/exams/<int:exam_id>/start", methods=["POST"])
+def exam_start(exam_id):
+    """Начало сдачи экзамена: создаётся попытка, статья скрывается."""
+    user, redirect_response = _require_login()
+    if redirect_response is not None:
+        return redirect_response
+    exam, redirect_response = _get_published_exam_for_student(exam_id, user)
+    if redirect_response is not None:
+        return redirect_response
+
+    attempt = (
+        ExamAttempt.query.filter_by(exam_id=exam.id, student_id=user.id)
+        .order_by(ExamAttempt.id.desc())
+        .first()
+    )
+    if attempt is not None and attempt.status == ATTEMPT_STATUS_COMPLETED:
+        flash("Вы уже сдали этот экзамен.", "info")
+        return redirect(url_for("exam_view", exam_id=exam.id))
+    if attempt is None:
+        attempt = ExamAttempt(exam_id=exam.id, student_id=user.id)
+        db.session.add(attempt)
+        db.session.commit()
+    return redirect(url_for("exam_take", exam_id=exam.id))
+
+
+@app.route("/exams/<int:exam_id>/take")
+def exam_take(exam_id):
+    """Процесс сдачи: студент видит вопросы, но не ответы и не статью."""
+    user, redirect_response = _require_login()
+    if redirect_response is not None:
+        return redirect_response
+    exam, redirect_response = _get_published_exam_for_student(exam_id, user)
+    if redirect_response is not None:
+        return redirect_response
+
+    attempt = _get_own_attempt(exam.id, user)
+    if attempt is None:
+        flash("Экзамен не начат или уже завершён.", "info")
+        return redirect(url_for("exam_view", exam_id=exam.id))
+    return render_template("exam_take.html", exam=exam, attempt=attempt)
+
+
+@app.route("/exams/<int:exam_id>/submit", methods=["POST"])
+def exam_submit(exam_id):
+    """Сдача ответов: модель оценивает их, выставляется итоговая оценка."""
+    user, redirect_response = _require_login()
+    if redirect_response is not None:
+        return redirect_response
+    exam, redirect_response = _get_published_exam_for_student(exam_id, user)
+    if redirect_response is not None:
+        return redirect_response
+
+    attempt = _get_own_attempt(exam.id, user)
+    if attempt is None:
+        flash("Экзамен не начат или уже завершён.", "info")
+        return redirect(url_for("exam_view", exam_id=exam.id))
+
+    # Собираем ответы студента: на все вопросы ответы обязательны
+    answered = []
+    for question in exam.questions:
+        text = request.form.get(f"answer_{question.id}", "").strip()
+        if not text:
+            flash("Ответьте на все вопросы, прежде чем сдавать экзамен.", "error")
+            return redirect(url_for("exam_take", exam_id=exam.id))
+        answered.append((question, text))
+
+    # Запрос к модели: оценить ответы студента по шкале от 1 до 5
+    try:
+        grades = grade_exam_answers(
+            exam.article_text,
+            [(question.question_text, text) for question, text in answered],
+        )
+    except LLMRequestError as exc:
+        flash(f"Ошибка при проверке ответов языковой моделью: {exc}", "error")
+        return redirect(url_for("exam_take", exam_id=exam.id))
+    except Exception as exc:
+        flash(f"Ошибка при проверке ответов: {exc}", "error")
+        return redirect(url_for("exam_take", exam_id=exam.id))
+
+    for (question, text), grade in zip(answered, grades):
+        attempt.answers.append(
+            ExamAttemptAnswer(
+                question_id=question.id,
+                answer_text=text,
+                grade=grade,
+            )
+        )
+    attempt.score = round(sum(grades) / len(grades), 2)
+    attempt.status = ATTEMPT_STATUS_COMPLETED
+    attempt.completed_at = datetime.utcnow()
+    db.session.commit()
+    flash(f"Экзамен сдан! Ваша оценка: {attempt.score}.", "success")
+    return redirect(url_for("exam_view", exam_id=exam.id))
 
 
 @app.route("/exams/<int:exam_id>/edit")

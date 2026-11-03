@@ -15,13 +15,66 @@
     <a href="{{ url_for('exams') }}" class="btn btn-small">К списку экзаменов</a>
 </div>
 
-{% for question in exam.questions %}
-    <div class="card exam-question-card">
-        <h3>Вопрос {{ loop.index }}</h3>
-        <div class="exam-question-text">{{ question.question_text }}</div>
-        <h4>Правильный ответ</h4>
-        <div class="exam-answer-text">{{ question.answer_text }}</div>
+{% if current_user.role == 'student' %}
+
+    {% if attempt and attempt.status == 'completed' %}
+        <div class="card exam-result-card">
+            <h2>Результат экзамена</h2>
+            <p class="exam-score">Оценка за экзамен: <strong>{{ attempt.score }}</strong></p>
+            <p class="muted">
+                Сдан: {{ attempt.completed_at.strftime('%d.%m.%Y %H:%M') if attempt.completed_at }}
+            </p>
+        </div>
+
+        {% for question in exam.questions %}
+            {% set answer = answers_by_question.get(question.id) %}
+            <div class="card exam-question-card">
+                <h3>Вопрос {{ loop.index }}</h3>
+                <div class="exam-question-text">{{ question.question_text }}</div>
+                {% if answer %}
+                    <h4>Ваш ответ</h4>
+                    <div class="exam-answer-text">{{ answer.answer_text }}</div>
+                    <p class="exam-grade">Оценка за вопрос: <strong>{{ answer.grade }} / 5</strong></p>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+        <div class="card">
+            <h2>Статья</h2>
+            <p class="muted">Экзамен сформирован по следующей статье.</p>
+            <div class="exam-article-text">{{ exam.article_text }}</div>
+        </div>
+    {% else %}
+        <div class="card">
+            <h2>Статья</h2>
+            <p class="muted">
+                Прочитайте статью, на основании которой сформирован экзамен.
+                Контрольные вопросы и ответы на них будут показаны только после
+                начала сдачи экзамена.
+            </p>
+            <div class="exam-article-text">{{ exam.article_text }}</div>
+            <form method="post" action="{{ url_for('exam_start', exam_id=exam.id) }}" class="exam-start-form">
+                <button type="submit" class="btn btn-primary">Сдать экзамен</button>
+            </form>
+        </div>
+    {% endif %}
+
+{% else %}
+
+    {% for question in exam.questions %}
+        <div class="card exam-question-card">
+            <h3>Вопрос {{ loop.index }}</h3>
+            <div class="exam-question-text">{{ question.question_text }}</div>
+            <h4>Правильный ответ</h4>
+            <div class="exam-answer-text">{{ question.answer_text }}</div>
+        </div>
+    {% endfor %}
+
+    <div class="card">
+        <h2>Статья</h2>
+        <div class="exam-article-text">{{ exam.article_text }}</div>
     </div>
-{% endfor %}
+
+{% endif %}
 
 {% endblock %}
