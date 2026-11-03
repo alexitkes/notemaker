@@ -25,6 +25,7 @@ from config import (
     TEMPERATURE_GRADING,
     TEMPERATURE_QUESTIONS,
     TEMPERATURE_SUMMARY,
+    TEMPERATURE_TYPE_DETECTION,
     ConfigError,
 )
 
@@ -159,6 +160,21 @@ SUMMARY_FORMAT_REQUIREMENTS = """
 Объём краткого содержания — не более {max_chars} символов. Отвечай только текстом краткого содержания, без вступлений и комментариев. Независимо от языка исходной статьи, отвечай по-русски.
 """
 
+# Системный промпт для автоопределения типа статьи. Модель получает текст
+# статьи и список названий с описаниями предусмотренных типов и отвечает
+# названием наиболее подходящего типа либо пустой строкой, если статья
+# не относится ни к одному из типов.
+TYPE_DETECT_SYSTEM_PROMPT = """Ты — ассистент, который определяет тип научной или учебной статьи.
+
+Тебе дан текст статьи и список возможных типов статей с их описаниями. Определи, на какой тип из списка эта статья больше всего похожа.
+
+Ответь строго точным названием одного из предложенных типов, без кавычек, пунктуации и каких-либо пояснений.
+
+Если статья не относится ни к одному из предложенных типов, ответь пустой строкой.
+
+Независимо от языка исходной статьи, отвечай названием типа в том виде, в каком оно указано в списке.
+"""
+
 
 def _resolve_system_prompt(
     default_prompt: str,
@@ -280,6 +296,59 @@ def summarize_article(
         final_prompt, "Текст статьи:\n\n" + article_text, TEMPERATURE_SUMMARY
     )
     return result[:SUMMARY_MAX_CHARS], truncated
+
+
+def detect_article_type(
+    article_text: str,
+    types: list[tuple[str, str]],
+) -> str | None:
+    """Определяет тип статьи с помощью языковой модели.
+
+    Принимает текст статьи и список пар (название_типа, описание_типа)
+    предусмотренных в системе типов. Модель отвечает названием наиболее
+    подходящего типа либо пустой строкой, если статья не относится
+    ни к одному из типов.
+
+    Возвращает название определённого типа или None, если модель
+    ответила пустым значением (тип не присваивается). Название
+    нормализуется к одному из переданных названий типов; если ответ
+    модели не совпадает ни с одним из них, возвращается None.
+    """
+    if not types:
+        return None
+
+    article_text, _truncated = _truncate_article_text(article_text)
+
+    catalog = "\n".join(
+        f"- {name}: {description}" if description else f"- {name}"
+        for name, description in types
+    )
+    user_prompt = (
+        "Список возможных типов статей:\n"
+        + catalog
+        + "\n\nТекст статьи:\n\n"
+        + article_text
+        + "\n\nНа какой из перечисленных типов больше всего похожа эта "
+        "статья? Ответь точным названием одного из типов или пустой "
+        "строкой, если статья не относится ни к одному из них."
+    )
+    result = ask_llm(
+        TYPE_DETECT_SYSTEM_PROMPT, user_prompt, TEMPERATURE_TYPE_DETECTION
+    ).strip().strip('"').strip()
+
+    if not result:
+        # Модель ответила пустым значением: статье не присваивается тип
+        return None
+
+    # Сопоставляем ответ модели с названиями типов (без учёта регистра);
+    # дополнительно допускаем, что модель вставила название в свой текст
+    for name, _description in types:
+        if result.lower() == name.lower():
+            return name
+    for name, _description in types:
+        if name.lower() in result.lower():
+            return name
+    return None
 
 
 def _parse_questions(raw_response: str) -> list[tuple[str, str]]:

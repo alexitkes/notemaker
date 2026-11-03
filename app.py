@@ -37,6 +37,7 @@ from llm_service import (
     EXAM_QUESTION_COUNT,
     LLMConfigError,
     LLMRequestError,
+    detect_article_type,
     generate_exam_questions,
     grade_exam_answers,
     summarize_article,
@@ -197,6 +198,48 @@ def _get_article_types():
     return ArticleType.query.order_by(ArticleType.name).all()
 
 
+def _detect_article_type_by_llm(article_text: str) -> tuple[ArticleType | None, str]:
+    """Автоматически определяет тип статьи с помощью языковой модели.
+
+    Статья передаётся в модель вместе со списком названий и описаний
+    предусмотренных типов; модель отвечает названием наиболее подходящего
+    типа или пустым значением (тогда тип не присваивается).
+
+    Возвращает (тип_или_None, сообщение_для_пользователя).
+    При ошибке обращения к модели выбрасывает LLMConfigError/LLMRequestError.
+    """
+    article_types = _get_article_types()
+    if not article_types:
+        return None, (
+            "Автоопределение типа недоступно: в системе ещё не создано "
+            "ни одного типа статей."
+        )
+
+    detected_name = detect_article_type(
+        article_text,
+        [(item.name, item.description) for item in article_types],
+    )
+
+    if not detected_name:
+        return None, (
+            "Модель не отнесла статью ни к одному из типов — тип не "
+            "присвоен. При необходимости выберите тип вручную."
+        )
+
+    for item in article_types:
+        if item.name == detected_name:
+            return item, (
+                f"Модель определила тип статьи: «{item.name}». "
+                "При необходимости скорректируйте его вручную."
+            )
+
+    # Ответ модели не совпал ни с одним названием типа
+    return None, (
+        "Модель не смогла однозначно определить тип статьи — тип не "
+        "присвоен. При необходимости выберите тип вручную."
+    )
+
+
 # --- Экзамены по статьям -----------------------------------------------------
 
 
@@ -264,38 +307,80 @@ def exam_create():
         )
         return redirect(url_for("exams"))
 
+    article_text = ""
+    article_type = None
+    detection_message = None
+
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         uploaded = request.files.get("article")
+        # Текст статьи, перенесённый из предыдущего шага формы: после
+        # автоопределения типа повторно загружать файл не требуется
+        hidden_text = request.form.get("article_text", "").strip()
+        # Признак того, что автоопределение типа уже выполнено
+        auto_detected = request.form.get("auto_detected") == "1"
         errors = []
 
         if not title:
             errors.append("Укажите название экзамена.")
-        if uploaded is None or not uploaded.filename:
+
+        if uploaded is not None and uploaded.filename:
+            if not uploaded.filename.lower().endswith(".pdf"):
+                errors.append("Допускаются только файлы в формате PDF.")
+            else:
+                raw = uploaded.read()
+                if not raw:
+                    errors.append("Файл пустой.")
+                else:
+                    try:
+                        article_text = extract_pdf_text(raw)
+                    except Exception as exc:
+                        errors.append(
+                            f"Не удалось извлечь текст из PDF: {exc}"
+                        )
+                # Загружен новый файл — автоопределение выполняем заново
+                auto_detected = False
+        elif hidden_text:
+            article_text = hidden_text
+        else:
             errors.append("Выберите PDF-файл со статьёй.")
-        elif not uploaded.filename.lower().endswith(".pdf"):
-            errors.append("Допускаются только файлы в формате PDF.")
+
+        if not errors and not article_text.strip():
+            errors.append(
+                "Не удалось извлечь текст из PDF. Возможно, "
+                "это скан-копия без текстового слоя."
+            )
 
         # Тип статьи необязателен: определяет переопределённые промпты
         article_type, type_error = _parse_article_type_from_form()
         if type_error:
             errors.append(type_error)
 
-        article_text = ""
-        if not errors:
-            raw = uploaded.read()
-            if not raw:
-                errors.append("Файл пустой.")
+        if not errors and request.form.get("detect_type") and not auto_detected:
+            # Пользователь запросил автоопределение типа статьи:
+            # определяем тип моделью и снова показываем форму, давая
+            # возможность при необходимости скорректировать тип вручную.
+            # Вопросы на этом шаге не генерируются.
+            try:
+                article_type, detection_message = (
+                    _detect_article_type_by_llm(article_text)
+                )
+            except LLMConfigError as exc:
+                errors.append(str(exc))
+            except LLMRequestError as exc:
+                errors.append(f"Ошибка обращения к языковой модели: {exc}")
+            except Exception as exc:
+                errors.append(f"Ошибка при обращении к языковой модели: {exc}")
             else:
-                try:
-                    article_text = extract_pdf_text(raw)
-                except Exception as exc:
-                    errors.append(f"Не удалось извлечь текст из PDF: {exc}")
-
-            if not errors and not article_text.strip():
-                errors.append(
-                    "Не удалось извлечь текст из PDF. Возможно, "
-                    "это скан-копия без текстового слоя."
+                return render_template(
+                    "exam_create.html",
+                    question_count=EXAM_QUESTION_COUNT,
+                    article_types=_get_article_types(),
+                    title_value=title,
+                    article_text_hidden=article_text,
+                    auto_detected=True,
+                    detection_message=detection_message,
+                    selected_type=article_type,
                 )
 
         pairs = []
@@ -346,6 +431,13 @@ def exam_create():
         "exam_create.html",
         question_count=EXAM_QUESTION_COUNT,
         article_types=_get_article_types(),
+        title_value=(
+            request.form.get("title", "") if request.method == "POST" else ""
+        ),
+        article_text_hidden=article_text,
+        auto_detected=False,
+        detection_message=detection_message,
+        selected_type=article_type,
     )
 
 
@@ -803,18 +895,20 @@ def summary():
     result = None
     truncated = False
     article_type = None
+    article_text = ""
+    detection_message = None
 
     if request.method == "POST":
         uploaded = request.files.get("article")
-        if uploaded is None or not uploaded.filename:
-            error = "Выберите PDF-файл со статьёй."
-        elif not uploaded.filename.lower().endswith(".pdf"):
-            error = "Допускаются только файлы в формате PDF."
-        else:
-            # Тип статьи необязателен: определяет промпт краткого содержания
-            article_type, type_error = _parse_article_type_from_form()
-            if type_error:
-                error = type_error
+        # Текст статьи, перенесённый из предыдущего шага формы: после
+        # автоопределения типа повторно загружать файл не требуется
+        hidden_text = request.form.get("article_text", "").strip()
+        # Признак того, что автоопределение типа уже выполнено
+        auto_detected = request.form.get("auto_detected") == "1"
+
+        if uploaded is not None and uploaded.filename:
+            if not uploaded.filename.lower().endswith(".pdf"):
+                error = "Допускаются только файлы в формате PDF."
             else:
                 raw = uploaded.read()
                 if not raw:
@@ -825,28 +919,79 @@ def summary():
                     except Exception as exc:
                         article_text = ""
                         error = f"Не удалось извлечь текст из PDF: {exc}"
+                # Загружен новый файл — автоопределение выполняем заново
+                auto_detected = False
+        elif hidden_text:
+            article_text = hidden_text
+        else:
+            error = "Выберите PDF-файл со статьёй."
 
-                    if not article_text.strip():
-                        error = error or (
-                            "Не удалось извлечь текст из PDF. Возможно, "
-                            "это скан-копия без текстового слоя."
-                        )
-                    else:
-                        try:
-                            result, truncated = summarize_article(
-                                article_text,
-                                # Промпт — из типа статьи, если задан
-                                system_prompt=(
-                                    article_type.summary_prompt
-                                    if article_type else None
-                                ),
-                            )
-                        except LLMConfigError as exc:
-                            error = str(exc)
-                        except LLMRequestError as exc:
-                            error = f"Ошибка обращения к языковой модели: {exc}"
-                        except Exception as exc:
-                            error = f"Ошибка при обращении к языковой модели: {exc}"
+        if not error and not article_text.strip():
+            error = (
+                "Не удалось извлечь текст из PDF. Возможно, "
+                "это скан-копия без текстового слоя."
+            )
+
+        # Тип статьи необязателен: определяет промпт краткого содержания
+        if not error:
+            article_type, type_error = _parse_article_type_from_form()
+            if type_error:
+                error = type_error
+
+        if (
+            not error
+            and request.form.get("detect_type")
+            and not auto_detected
+        ):
+            # Пользователь запросил автоопределение типа статьи:
+            # определяем тип моделью и снова показываем форму, давая
+            # возможность при необходимости скорректировать тип вручную.
+            # Краткое содержание на этом шаге не формируется.
+            try:
+                article_type, detection_message = (
+                    _detect_article_type_by_llm(article_text)
+                )
+            except LLMConfigError as exc:
+                error = str(exc)
+            except LLMRequestError as exc:
+                error = f"Ошибка обращения к языковой модели: {exc}"
+            except Exception as exc:
+                error = f"Ошибка при обращении к языковой модели: {exc}"
+            else:
+                return render_template(
+                    "summary.html",
+                    user=user,
+                    error=None,
+                    result=None,
+                    truncated=False,
+                    model_name=LLM_MODEL,
+                    llm_type_label=(
+                        "GigaChat" if LLM_API_TYPE == "gigachat"
+                        else "OpenAI-совместимый API"
+                    ),
+                    article_types=_get_article_types(),
+                    selected_type=article_type,
+                    article_text_hidden=article_text,
+                    auto_detected=True,
+                    detection_message=detection_message,
+                )
+
+        if not error:
+            try:
+                result, truncated = summarize_article(
+                    article_text,
+                    # Промпт — из типа статьи, если задан
+                    system_prompt=(
+                        article_type.summary_prompt
+                        if article_type else None
+                    ),
+                )
+            except LLMConfigError as exc:
+                error = str(exc)
+            except LLMRequestError as exc:
+                error = f"Ошибка обращения к языковой модели: {exc}"
+            except Exception as exc:
+                error = f"Ошибка при обращении к языковой модели: {exc}"
 
     return render_template(
         "summary.html",
@@ -860,6 +1005,9 @@ def summary():
         ),
         article_types=_get_article_types(),
         selected_type=article_type,
+        article_text_hidden=article_text if request.method == "POST" else "",
+        auto_detected=False,
+        detection_message=detection_message,
     )
 
 

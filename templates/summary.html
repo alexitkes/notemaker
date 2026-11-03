@@ -11,6 +11,36 @@
     </p>
 
     <form method="POST" enctype="multipart/form-data" class="upload-form">
+        {% if article_text_hidden %}
+            {# Текст статьи уже извлечён на предыдущем шаге — повторная загрузка файла не требуется #}
+            <input type="hidden" name="article_text" value="{{ article_text_hidden }}">
+        {% endif %}
+        {% if auto_detected %}
+            <input type="hidden" name="auto_detected" value="1">
+        {% endif %}
+        {% if detection_message %}
+            <div class="flash flash-info">{{ detection_message }}</div>
+        {% endif %}
+        <div class="form-group">
+            <label for="article">Файл статьи (PDF)</label>
+            <input type="file" id="article" name="article"
+                   accept=".pdf,application/pdf" {% if not article_text_hidden %}required{% endif %}>
+            {% if article_text_hidden %}
+                <p class="muted">Текст статьи уже загружен. Загрузите новый файл, только если хотите заменить статью.</p>
+            {% endif %}
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="detect_type" name="detect_type"
+                       {% if auto_detected %}checked{% endif %}>
+                Определить тип статьи автоматически
+            </label>
+            <p class="muted">
+                Если отметить этот параметр, языковая модель определит тип
+                статьи по её тексту; после этого вы сможете при необходимости
+                скорректировать его вручную.
+            </p>
+        </div>
         <div class="form-group">
             <label for="article_type">Тип статьи (необязательно)</label>
             <select id="article_type" name="article_type">
@@ -26,11 +56,6 @@
                 Если у статьи есть тип, для составления краткого содержания
                 будет использован системный промпт этого типа (если он задан).
             </p>
-        </div>
-        <div class="form-group">
-            <label for="article">Файл статьи (PDF)</label>
-            <input type="file" id="article" name="article"
-                   accept=".pdf,application/pdf" required>
         </div>
         <button type="submit" class="btn btn-primary">
             Сформировать краткое содержание
