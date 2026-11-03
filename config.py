@@ -125,7 +125,7 @@ GIGACHAT_OAUTH_URL = _env(
 )
 
 # Максимальный размер текста статьи (символов), передаваемого модели
-MAX_LLM_INPUT_CHARS = _env_int("MAX_LLM_INPUT_CHARS", "24000")
+MAX_LLM_INPUT_CHARS = _env_int("MAX_LLM_INPUT_CHARS", "75000")
 
 # Секретный ключ Flask для подписи сессий
 SECRET_KEY = _env("SECRET_KEY", "dev-secret-key-change-me")
