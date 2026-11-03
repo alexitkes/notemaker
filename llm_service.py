@@ -105,16 +105,17 @@ def get_gigachat_token() -> str:
         return cached["access_token"]
 
     # Наличие ключа уже проверено в config.py
-    auth_header = base64.b64encode(LLM_API_TOKEN.encode()).decode()
+    auth_header = LLM_API_TOKEN
     try:
         response = requests.post(
             GIGACHAT_OAUTH_URL,
             headers={
                 "Authorization": f"Basic {auth_header}",
                 "RqUID": str(uuid.uuid4()),
+                "Accept": "application/json",
                 "Content-Type": "application/x-www-form-urlencoded",
             },
-            data="scope=GIGACHAT_API_PERS",
+            data={'scope': "GIGACHAT_API_PERS"},
             timeout=30,
         )
         response.raise_for_status()  # выбрасывает HTTPError при неудаче
