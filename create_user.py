@@ -4,6 +4,9 @@
 окружения языковой модели (переменных .env), поэтому её можно использовать
 даже если приложение не запускается из-за ошибки конфигурации.
 
+Если файл базы данных ещё не существует, утилита создаст пустую базу
+данных со всеми таблицами.
+
 Модель пользователя (User) и объект db импортируются из db_models.py —
 это те же модели, что использует веб-приложение app.py.
 
@@ -166,13 +169,6 @@ def collect_user_data(args: argparse.Namespace) -> tuple[str, str, str]:
 def main(argv=None) -> int:
     args = parse_args(argv)
 
-    if not os.path.exists(args.db):
-        sys.exit(
-            f"Ошибка: база данных не найдена: {args.db}.\n"
-            "Убедитесь, что приложение хотя бы раз запускалось и создало "
-            "файл users.db, либо укажите путь через --db."
-        )
-
     name, email, role = collect_user_data(args)
 
     # Пароль всегда запрашивается только с клавиатуры
@@ -186,6 +182,13 @@ def main(argv=None) -> int:
 
     try:
         with app.app_context():
+            # Если файла базы данных ещё нет, создаем пустую БД
+            # со всеми таблицами (SQLite создаст файл при подключении).
+            if not os.path.exists(args.db):
+                print(f"База данных не найдена, создается новая: {args.db}")
+                db.create_all()
+                print("База данных создана.")
+
             existing = User.query.filter_by(email=email).first()
             if existing is not None:
                 sys.exit(
