@@ -65,10 +65,15 @@ class Exam(db.Model):
     )
     # Исходный текст статьи хранится для повторной генерации вопросов
     article_text = db.Column(db.Text, nullable=False, default="")
+    # Необязательный тип статьи: определяет используемые системные промпты
+    article_type_id = db.Column(
+        db.Integer, db.ForeignKey("article_type.id"), nullable=True, index=True
+    )
 
     author = db.relationship(
         "User", backref="exams", foreign_keys=[created_by]
     )
+    article_type = db.relationship("ArticleType")
     questions = db.relationship(
         "ExamQuestion",
         backref="exam",
@@ -135,6 +140,29 @@ class ExamAttempt(db.Model):
         # Один студент сдаёт конкретный экзамен один раз
         db.UniqueConstraint("exam_id", "student_id", name="uq_attempt_exam_student"),
     )
+
+
+class ArticleType(db.Model):
+    """Тип статьи (например, «научная статья», «учебное пособие»).
+
+    Для каждого типа администратор может задать переопределения системных
+    промптов для трёх задач: составления краткого содержания, генерации
+    экзаменационных вопросов и проверки ответов студента. Пустое поле
+    означает использование промпта по умолчанию.
+
+    Обычные пользователи видят только name и description; переопределённые
+    промпты доступны только администраторам.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False, unique=True)
+    description = db.Column(db.Text, nullable=False, default="")
+    # Переопределение промпта составления краткого содержания
+    summary_prompt = db.Column(db.Text, nullable=False, default="")
+    # Переопределение промпта генерации экзаменационных вопросов
+    exam_prompt = db.Column(db.Text, nullable=False, default="")
+    # Переопределение промпта проверки ответов на вопросы
+    grade_prompt = db.Column(db.Text, nullable=False, default="")
 
 
 class ExamAttemptAnswer(db.Model):

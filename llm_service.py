@@ -116,6 +116,67 @@ EXAM_SYSTEM_PROMPT = """Ты — опытный преподаватель, ко
 Независимо от языка исходной статьи, формулируй вопросы и ответы по-русски.
 """
 
+# Требования к формату вывода при использовании переопределённого промпта
+# генерации вопросов (см. ArticleType.exam_prompt). Добавляются к промпту,
+# чтобы ответ модели всегда можно было разобрать. Плейсхолдер {count}
+# подставляется при вызове модели.
+EXAM_FORMAT_REQUIREMENTS = """
+Сгенерируй ровно {count} вопросов на усвоение материала статьи с правильными ответами на них.
+
+Строго соблюдай формат вывода — для каждого вопроса используй маркеры [ВОПРОС] и [ОТВЕТ]:
+
+[ВОПРОС]
+Текст вопроса
+[ОТВЕТ]
+Текст правильного ответа
+
+Не добавляй ничего сверх вопросов и ответов: никаких заголовков, вступлений или нумерации вне маркеров.
+
+Независимо от языка исходной статьи, формулируй вопросы и ответы по-русски.
+"""
+
+# Требования к формату вывода при использовании переопределённого промпта
+# проверки ответов (см. ArticleType.grade_prompt).
+GRADE_FORMAT_REQUIREMENTS = """
+Оцени каждый ответ студента по шкале от 1 до 5, где 5 — полный и правильный ответ, а 1 — полностью неверный или отсутствующий ответ. Оценивай каждый ответ на основании текста статьи.
+
+Строго соблюдай формат вывода — для каждого вопроса используй маркер [ВОПРОС N] и строку «Оценка: X», где N — номер вопроса, а X — целое число от 1 до 5:
+
+[ВОПРОС 1]
+Оценка: 4
+
+Не добавляй ничего сверх оценок: никаких комментариев, объяснений или выводов.
+
+Независимо от языка исходной статьи, выводи только оценки в указанном формате.
+"""
+
+# Требования при использовании переопределённого промпта составления
+# краткого содержания (см. ArticleType.summary_prompt). Плейсхолдер
+# {max_chars} подставляется при вызове модели.
+SUMMARY_FORMAT_REQUIREMENTS = """
+Объём краткого содержания — не более {max_chars} символов. Отвечай только текстом краткого содержания, без вступлений и комментариев. Независимо от языка исходной статьи, отвечай по-русски.
+"""
+
+
+def _resolve_system_prompt(
+    default_prompt: str,
+    custom_prompt: str | None,
+    format_requirements: str | None = None,
+) -> str:
+    """Выбирает системный промпт для задачи.
+
+    Если задан непустой custom_prompt (переопределение из типа статьи),
+    используется он; при необходимости к нему добавляются обязательные
+    требования к формату вывода, чтобы ответ модели можно было разобрать.
+    Иначе используется default_prompt.
+    """
+    custom = (custom_prompt or "").strip()
+    if not custom:
+        return default_prompt
+    if format_requirements:
+        custom = custom.rstrip() + "\n\n" + format_requirements
+    return custom
+
 
 
 class LLMRequestError(Exception):
@@ -189,15 +250,25 @@ def ask_llm(system_prompt: str, user_prompt: str) -> str:
     return content.strip()
 
 
-def summarize_article(article_text: str) -> tuple[str, bool]:
+def summarize_article(
+    article_text: str,
+    system_prompt: str | None = None,
+) -> tuple[str, bool]:
     """Формирует краткое содержание статьи через языковую модель.
+
+    system_prompt — необязательное переопределение системного промпта
+    (из типа статьи). Если оно не задано или пустое, используется промпт
+    по умолчанию.
 
     Возвращает кортеж (краткое_содержание, был_ли_обрезан_исходный_текст).
     """
     article_text, truncated = _truncate_article_text(article_text)
 
-    system_prompt = SYSTEM_PROMPT.format(max_chars=SUMMARY_MAX_CHARS)
-    result = ask_llm(system_prompt, "Текст статьи:\n\n" + article_text)
+    default_prompt = SYSTEM_PROMPT.format(max_chars=SUMMARY_MAX_CHARS)
+    final_prompt = _resolve_system_prompt(
+        default_prompt, system_prompt, SUMMARY_FORMAT_REQUIREMENTS
+    )
+    result = ask_llm(final_prompt, "Текст статьи:\n\n" + article_text)
     return result[:SUMMARY_MAX_CHARS], truncated
 
 
@@ -228,15 +299,23 @@ def _parse_questions(raw_response: str) -> list[tuple[str, str]]:
 def generate_exam_questions(
     article_text: str,
     count: int = EXAM_QUESTION_COUNT,
+    system_prompt: str | None = None,
 ) -> tuple[list[tuple[str, str]], bool]:
     """Генерирует экзаменационные вопросы и ответы на статью.
+
+    system_prompt — необязательное переопределение системного промпта
+    (из типа статьи). Если оно не задано или пустое, используется промпт
+    по умолчанию.
 
     Возвращает кортеж (список пар (вопрос, ответ), был_ли_обрезан_текст).
     """
     article_text, truncated = _truncate_article_text(article_text)
 
-    system_prompt = EXAM_SYSTEM_PROMPT.format(count=count)
-    result = ask_llm(system_prompt, "Текст статьи:\n\n" + article_text)
+    default_prompt = EXAM_SYSTEM_PROMPT.format(count=count)
+    final_prompt = _resolve_system_prompt(
+        default_prompt, system_prompt, EXAM_FORMAT_REQUIREMENTS.format(count=count)
+    )
+    result = ask_llm(final_prompt, "Текст статьи:\n\n" + article_text)
     pairs = _parse_questions(result)
     return pairs, truncated
 
@@ -267,10 +346,15 @@ def _parse_grades(raw_response: str, expected_count: int) -> list[int]:
 def grade_exam_answers(
     article_text: str,
     answered_questions: list[tuple[str, str]],
+    system_prompt: str | None = None,
 ) -> list[int]:
     """Оценивает ответы студента на вопросы к статье по шкале от 1 до 5.
 
     Принимает текст статьи и список пар (текст_вопроса, ответ_студента).
+    system_prompt — необязательное переопределение системного промпта
+    (из типа статьи). Если оно не задано или пустое, используется промпт
+    по умолчанию.
+
     Возвращает список целых оценок — по одной на каждый вопрос.
     """
     article_text, _truncated = _truncate_article_text(article_text)
@@ -283,5 +367,8 @@ def grade_exam_answers(
         "Текст статьи:\n\n" + article_text +
         "\n\nВопросы и ответы студента:\n\n" + blocks
     )
-    result = ask_llm(GRADE_SYSTEM_PROMPT, user_prompt)
+    final_prompt = _resolve_system_prompt(
+        GRADE_SYSTEM_PROMPT, system_prompt, GRADE_FORMAT_REQUIREMENTS
+    )
+    result = ask_llm(final_prompt, user_prompt)
     return _parse_grades(result, len(answered_questions))

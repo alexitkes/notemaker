@@ -20,6 +20,21 @@
                    maxlength="200" required>
         </div>
         <div class="form-group">
+            <label for="article_type">Тип статьи (необязательно)</label>
+            <select id="article_type" name="article_type">
+                <option value="">Без типа (промпт по умолчанию)</option>
+                {% for type in article_types %}
+                    <option value="{{ type.id }}" title="{{ type.description }}">
+                        {{ type.name }}
+                    </option>
+                {% endfor %}
+            </select>
+            <p class="muted" id="article-type-description">
+                Если у статьи есть тип, для генерации вопросов будет
+                использован системный промпт этого типа (если он задан).
+            </p>
+        </div>
+        <div class="form-group">
             <label for="article">Файл статьи (PDF)</label>
             <input type="file" id="article" name="article"
                    accept=".pdf,application/pdf" required>
@@ -29,5 +44,24 @@
         </button>
     </form>
 </div>
+
+<script>
+    // Показывает описание выбранного типа статьи под списком
+    (function () {
+        var select = document.getElementById('article_type');
+        var description = document.getElementById('article-type-description');
+        var defaultText = description.textContent;
+        function update() {
+            var option = select.selectedOptions[0];
+            if (option && option.value && option.title) {
+                description.textContent = option.title;
+            } else {
+                description.textContent = defaultText;
+            }
+        }
+        select.addEventListener('change', update);
+        update();
+    })();
+</script>
 
 {% endblock %}

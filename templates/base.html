@@ -17,6 +17,7 @@
                 <a href="{{ url_for('exams') }}">Экзамены</a>
                 {% if current_user.role == 'administrator' %}
                     <a href="{{ url_for('admin_users') }}">Пользователи</a>
+                    <a href="{{ url_for('admin_article_types') }}">Типы статей</a>
                 {% endif %}
                 <a href="{{ url_for('logout') }}">Выход</a>
             {% else %}

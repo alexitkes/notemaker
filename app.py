@@ -25,6 +25,7 @@ from db_models import (
     ATTEMPT_STATUS_IN_PROGRESS,
     EXAM_STATUS_DRAFT,
     EXAM_STATUS_PUBLISHED,
+    ArticleType,
     Exam,
     ExamAttempt,
     ExamAttemptAnswer,
@@ -157,6 +158,45 @@ def logout():
     return redirect(url_for("login"))
 
 
+# --- Типы статей -------------------------------------------------------------
+
+
+def _require_admin():
+    """Возвращает текущего пользователя-администратора либо перенаправляет."""
+    user = get_current_user()
+    if user is None or user.role != "administrator":
+        flash(
+            "Доступ запрещён: эта страница доступна только администратору.",
+            "error",
+        )
+        if user is None:
+            return None, redirect(url_for("login"))
+        return None, redirect(url_for("index"))
+    return user, None
+
+
+def _parse_article_type_from_form():
+    """Читает выбранную статью-тип из формы.
+
+    Пустое значение означает «без типа». При некорректном значении
+    возвращает (None, сообщение_об_ошибке), при успехе — (тип, None).
+    """
+    raw = request.form.get("article_type", "").strip()
+    if not raw:
+        return None, None
+    if not raw.isdigit():
+        return None, "Выберите корректный тип статьи."
+    article_type = db.session.get(ArticleType, int(raw))
+    if article_type is None:
+        return None, "Выбранный тип статьи не найден."
+    return article_type, None
+
+
+def _get_article_types():
+    """Список типов статей для выбора при загрузке (имя и описание)."""
+    return ArticleType.query.order_by(ArticleType.name).all()
+
+
 # --- Экзамены по статьям -----------------------------------------------------
 
 
@@ -236,6 +276,11 @@ def exam_create():
         elif not uploaded.filename.lower().endswith(".pdf"):
             errors.append("Допускаются только файлы в формате PDF.")
 
+        # Тип статьи необязателен: определяет переопределённые промпты
+        article_type, type_error = _parse_article_type_from_form()
+        if type_error:
+            errors.append(type_error)
+
         article_text = ""
         if not errors:
             raw = uploaded.read()
@@ -255,8 +300,15 @@ def exam_create():
 
         pairs = []
         if not errors:
+            # Если у типа статьи задан свой промпт генерации вопросов —
+            # используем его, иначе промпт по умолчанию (внутри сервиса)
             try:
-                pairs, _truncated = generate_exam_questions(article_text)
+                pairs, _truncated = generate_exam_questions(
+                    article_text,
+                    system_prompt=(
+                        article_type.exam_prompt if article_type else None
+                    ),
+                )
             except LLMRequestError as exc:
                 errors.append(
                     f"Ошибка при генерации вопросов языковой моделью: {exc}"
@@ -275,6 +327,7 @@ def exam_create():
                 created_by=user.id,
                 article_text=article_text,
                 status=EXAM_STATUS_DRAFT,
+                article_type=article_type,
             )
             for position, (question, answer) in enumerate(pairs, start=1):
                 exam.questions.append(
@@ -289,7 +342,11 @@ def exam_create():
             flash("Черновик экзамена создан. Проверьте вопросы и ответы.", "success")
             return redirect(url_for("exam_edit", exam_id=exam.id))
 
-    return render_template("exam_create.html", question_count=EXAM_QUESTION_COUNT)
+    return render_template(
+        "exam_create.html",
+        question_count=EXAM_QUESTION_COUNT,
+        article_types=_get_article_types(),
+    )
 
 
 @app.route("/exams/<int:exam_id>")
@@ -433,6 +490,11 @@ def exam_submit(exam_id):
         grades = grade_exam_answers(
             exam.article_text,
             [(question.question_text, text) for question, text in answered],
+            # Промпт проверки — из типа статьи экзамена, если задан
+            system_prompt=(
+                exam.article_type.grade_prompt
+                if exam.article_type else None
+            ),
         )
     except LLMRequestError as exc:
         flash(f"Ошибка при проверке ответов языковой моделью: {exc}", "error")
@@ -610,6 +672,125 @@ def admin_change_role(user_id):
     return redirect(url_for("admin_users"))
 
 
+# --- Управление типами статей (только администратор) -------------------------
+
+
+@app.route("/admin/article-types")
+def admin_article_types():
+    """Список типов статей с формой добавления — только администратору."""
+    admin, redirect_response = _require_admin()
+    if redirect_response is not None:
+        return redirect_response
+    article_types = _get_article_types()
+    return render_template("admin_article_types.html", article_types=article_types)
+
+
+@app.route("/admin/article-types/new", methods=["GET", "POST"])
+def admin_article_type_new():
+    """Добавление нового типа статьи — только администратору."""
+    admin, redirect_response = _require_admin()
+    if redirect_response is not None:
+        return redirect_response
+
+    if request.method == "POST":
+        errors = _validate_article_type_form()
+        if not errors:
+            article_type = ArticleType(
+                name=request.form.get("name", "").strip(),
+                description=request.form.get("description", "").strip(),
+                summary_prompt=request.form.get("summary_prompt", "").strip(),
+                exam_prompt=request.form.get("exam_prompt", "").strip(),
+                grade_prompt=request.form.get("grade_prompt", "").strip(),
+            )
+            db.session.add(article_type)
+            db.session.commit()
+            flash(
+                f"Тип статьи «{article_type.name}» добавлен.",
+                "success",
+            )
+            return redirect(url_for("admin_article_types"))
+        for message in errors:
+            flash(message, "error")
+
+    return render_template("admin_article_type_form.html", article_type=None)
+
+
+@app.route("/admin/article-types/<int:type_id>/edit", methods=["GET", "POST"])
+def admin_article_type_edit(type_id):
+    """Редактирование типа статьи — только администратору."""
+    admin, redirect_response = _require_admin()
+    if redirect_response is not None:
+        return redirect_response
+
+    article_type = db.session.get(ArticleType, type_id)
+    if article_type is None:
+        flash("Тип статьи не найден.", "error")
+        return redirect(url_for("admin_article_types"))
+
+    if request.method == "POST":
+        errors = _validate_article_type_form(exclude_id=article_type.id)
+        if not errors:
+            article_type.name = request.form.get("name", "").strip()
+            article_type.description = request.form.get("description", "").strip()
+            article_type.summary_prompt = request.form.get(
+                "summary_prompt", ""
+            ).strip()
+            article_type.exam_prompt = request.form.get("exam_prompt", "").strip()
+            article_type.grade_prompt = request.form.get("grade_prompt", "").strip()
+            db.session.commit()
+            flash(f"Тип статьи «{article_type.name}» сохранён.", "success")
+            return redirect(url_for("admin_article_types"))
+        for message in errors:
+            flash(message, "error")
+
+    return render_template(
+        "admin_article_type_form.html", article_type=article_type
+    )
+
+
+@app.route("/admin/article-types/<int:type_id>/delete", methods=["POST"])
+def admin_article_type_delete(type_id):
+    """Удаление типа статьи — только администратору.
+
+    Статьи, привязанные к типу, сохраняются: у них сбрасывается тип,
+    и при работе с ними используется промпт по умолчанию.
+    """
+    admin, redirect_response = _require_admin()
+    if redirect_response is not None:
+        return redirect_response
+
+    article_type = db.session.get(ArticleType, type_id)
+    if article_type is None:
+        flash("Тип статьи не найден.", "error")
+        return redirect(url_for("admin_article_types"))
+
+    # Экзамены, привязанные к типу, сохраняются: у них сбрасывается тип
+    Exam.query.filter_by(article_type_id=article_type.id).update(
+        {Exam.article_type_id: None}
+    )
+    db.session.delete(article_type)
+    db.session.commit()
+    flash(f"Тип статьи «{article_type.name}» удалён.", "success")
+    return redirect(url_for("admin_article_types"))
+
+
+def _validate_article_type_form(exclude_id: int | None = None) -> list[str]:
+    """Проверяет форму типа статьи; возвращает список ошибок."""
+    errors = []
+    name = request.form.get("name", "").strip()
+    if not name:
+        errors.append("Укажите название типа статьи.")
+    elif len(name) > 200:
+        errors.append("Название типа статьи не должно превышать 200 символов.")
+    else:
+        query = ArticleType.query.filter_by(name=name)
+        if exclude_id is not None:
+            query = query.filter(ArticleType.id != exclude_id)
+        if query.first():
+            errors.append("Тип статьи с таким названием уже существует.")
+    return errors
+
+
 @app.route("/summary", methods=["GET", "POST"])
 def summary():
     """Краткое содержание статьи из PDF — доступно всем зарегистрированным пользователям."""
@@ -621,6 +802,7 @@ def summary():
     error = None
     result = None
     truncated = False
+    article_type = None
 
     if request.method == "POST":
         uploaded = request.files.get("article")
@@ -629,30 +811,42 @@ def summary():
         elif not uploaded.filename.lower().endswith(".pdf"):
             error = "Допускаются только файлы в формате PDF."
         else:
-            raw = uploaded.read()
-            if not raw:
-                error = "Файл пустой."
+            # Тип статьи необязателен: определяет промпт краткого содержания
+            article_type, type_error = _parse_article_type_from_form()
+            if type_error:
+                error = type_error
             else:
-                try:
-                    article_text = extract_pdf_text(raw)
-                except Exception as exc:
-                    article_text = ""
-                    error = f"Не удалось извлечь текст из PDF: {exc}"
-
-                if not article_text.strip():
-                    error = error or (
-                        "Не удалось извлечь текст из PDF. Возможно, "
-                        "это скан-копия без текстового слоя."
-                    )
+                raw = uploaded.read()
+                if not raw:
+                    error = "Файл пустой."
                 else:
                     try:
-                        result, truncated = summarize_article(article_text)
-                    except LLMConfigError as exc:
-                        error = str(exc)
-                    except LLMRequestError as exc:
-                        error = f"Ошибка обращения к языковой модели: {exc}"
+                        article_text = extract_pdf_text(raw)
                     except Exception as exc:
-                        error = f"Ошибка при обращении к языковой модели: {exc}"
+                        article_text = ""
+                        error = f"Не удалось извлечь текст из PDF: {exc}"
+
+                    if not article_text.strip():
+                        error = error or (
+                            "Не удалось извлечь текст из PDF. Возможно, "
+                            "это скан-копия без текстового слоя."
+                        )
+                    else:
+                        try:
+                            result, truncated = summarize_article(
+                                article_text,
+                                # Промпт — из типа статьи, если задан
+                                system_prompt=(
+                                    article_type.summary_prompt
+                                    if article_type else None
+                                ),
+                            )
+                        except LLMConfigError as exc:
+                            error = str(exc)
+                        except LLMRequestError as exc:
+                            error = f"Ошибка обращения к языковой модели: {exc}"
+                        except Exception as exc:
+                            error = f"Ошибка при обращении к языковой модели: {exc}"
 
     return render_template(
         "summary.html",
@@ -664,6 +858,8 @@ def summary():
         llm_type_label=(
             "GigaChat" if LLM_API_TYPE == "gigachat" else "OpenAI-совместимый API"
         ),
+        article_types=_get_article_types(),
+        selected_type=article_type,
     )
 
 
@@ -689,9 +885,31 @@ def extract_pdf_text(raw: bytes) -> str:
     return "\n\n".join(pages)
 
 
+def _ensure_exam_article_type_column() -> None:
+    """Добавляет колонку article_type_id в таблицу exam для существующих БД.
+
+    db.create_all() не изменяет уже существующие таблицы, поэтому для баз,
+    созданных до появления типов статей, колонка добавляется вручную.
+    """
+    with db.engine.connect() as connection:
+        columns = {
+            row[1]
+            for row in connection.execute(db.text("PRAGMA table_info(exam)"))
+        }
+        if "article_type_id" not in columns:
+            connection.execute(
+                db.text(
+                    "ALTER TABLE exam ADD COLUMN article_type_id INTEGER "
+                    "REFERENCES article_type(id)"
+                )
+            )
+            connection.commit()
+
+
 # Создаём таблицы в SQLite (файл users.db) при загрузке приложения
 with app.app_context():
     db.create_all()
+    _ensure_exam_article_type_column()
 
 if __name__ == "__main__":
     app.run(debug=True)

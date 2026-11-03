@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}
+    {% if article_type %}Редактирование типа статьи{% else %}Новый тип статьи{% endif %} — NoteMaker
+{% endblock %}
+{% block content %}
+
+<div class="card">
+    <h1>
+        {% if article_type %}
+            Редактирование типа статьи
+        {% else %}
+            Новый тип статьи
+        {% endif %}
+    </h1>
+    <p class="muted">
+        Название и описание типа видят все пользователи при загрузке статьи.
+        Системные промпты необязательны: если промпт для какой-то задачи
+        оставлен пустым, для неё используется промпт по умолчанию.
+    </p>
+
+    <form method="POST" class="upload-form">
+        <div class="form-group">
+            <label for="name">Название типа</label>
+            <input type="text" id="name" name="name"
+                   value="{{ article_type.name if article_type else '' }}"
+                   placeholder="Например: Научная статья"
+                   maxlength="200" required>
+        </div>
+        <div class="form-group">
+            <label for="description">Описание</label>
+            <textarea id="description" name="description" rows="3"
+                      placeholder="Краткое описание категории статей для пользователей">{{ article_type.description if article_type else '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label for="summary_prompt">
+                Промпт: краткое содержание (необязательно)
+            </label>
+            <textarea id="summary_prompt" name="summary_prompt" rows="6"
+                      placeholder="Оставьте пустым, чтобы использовать промпт по умолчанию">{{ article_type.summary_prompt if article_type else '' }}</textarea>
+            <p class="muted">
+                Используется при составлении краткого содержания статьи этого типа.
+            </p>
+        </div>
+        <div class="form-group">
+            <label for="exam_prompt">
+                Промпт: генерация вопросов (необязательно)
+            </label>
+            <textarea id="exam_prompt" name="exam_prompt" rows="6"
+                      placeholder="Оставьте пустым, чтобы использовать промпт по умолчанию">{{ article_type.exam_prompt if article_type else '' }}</textarea>
+            <p class="muted">
+                Используется при генерации экзаменационных вопросов по статье
+                этого типа. Требования к формату ответа модели добавляются
+                автоматически.
+            </p>
+        </div>
+        <div class="form-group">
+            <label for="grade_prompt">
+                Промпт: проверка ответов (необязательно)
+            </label>
+            <textarea id="grade_prompt" name="grade_prompt" rows="6"
+                      placeholder="Оставьте пустым, чтобы использовать промпт по умолчанию">{{ article_type.grade_prompt if article_type else '' }}</textarea>
+            <p class="muted">
+                Используется при проверке ответов студента на вопросы
+                по статье этого типа. Требования к формату ответа модели
+                добавляются автоматически.
+            </p>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            {% if article_type %}Сохранить{% else %}Добавить тип{% endif %}
+        </button>
+        <a href="{{ url_for('admin_article_types') }}" class="btn btn-small">Отмена</a>
+    </form>
+</div>
+
+{% endblock %}

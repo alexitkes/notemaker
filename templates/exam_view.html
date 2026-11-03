@@ -11,6 +11,9 @@
         Автор: {{ exam.author.username if exam.author else '—' }} ·
         Создан: {{ exam.created_at.strftime('%d.%m.%Y %H:%M') }} ·
         Вопросов: {{ exam.questions|length }}
+        {% if exam.article_type %} ·
+            Тип статьи: {{ exam.article_type.name }}
+        {% endif %}
     </p>
     <a href="{{ url_for('exams') }}" class="btn btn-small">К списку экзаменов</a>
 </div>

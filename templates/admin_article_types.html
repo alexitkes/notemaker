@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Типы статей — NoteMaker{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="exams-header">
+        <h1>Типы статей</h1>
+        <a href="{{ url_for('admin_article_type_new') }}" class="btn btn-primary">
+            Добавить тип
+        </a>
+    </div>
+    <p class="muted">
+        Тип статьи позволяет использовать особые системные промпты языковой
+        модели для статей этой категории. Пользователи видят только название
+        и описание типа; переопределённые промпты видны и редактируются
+        только здесь.
+    </p>
+</div>
+
+{% if article_types %}
+    <div class="card table-card">
+        <table class="users-table">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Промпты</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for type in article_types %}
+                    <tr>
+                        <td>{{ type.name }}</td>
+                        <td>{{ type.description or '—' }}</td>
+                        <td class="muted">
+                            {% set prompts = [] %}
+                            {% if type.summary_prompt %}{% set _ = prompts.append('краткое содержание') %}{% endif %}
+                            {% if type.exam_prompt %}{% set _ = prompts.append('вопросы') %}{% endif %}
+                            {% if type.grade_prompt %}{% set _ = prompts.append('проверка ответов') %}{% endif %}
+                            {% if prompts %}
+                                Переопределены: {{ prompts|join(', ') }}
+                            {% else %}
+                                Все по умолчанию
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="role-form">
+                                <a href="{{ url_for('admin_article_type_edit', type_id=type.id) }}"
+                                   class="btn btn-small">Редактировать</a>
+                                <form method="post"
+                                      action="{{ url_for('admin_article_type_delete', type_id=type.id) }}"
+                                      onsubmit="return confirm('Удалить тип «{{ type.name }}»? У экзаменов, созданных по статьям этого типа, тип будет сброшен.');">
+                                    <button type="submit" class="btn btn-small">Удалить</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <div class="card">
+        <p class="muted">
+            Типы статей ещё не созданы. Все статьи обрабатываются промптами
+            по умолчанию.
+        </p>
+    </div>
+{% endif %}
+
+{% endblock %}
