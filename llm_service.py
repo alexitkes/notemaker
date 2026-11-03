@@ -22,6 +22,9 @@ from config import (
     LLM_API_URL,
     LLM_MODEL,
     MAX_LLM_INPUT_CHARS,
+    TEMPERATURE_GRADING,
+    TEMPERATURE_QUESTIONS,
+    TEMPERATURE_SUMMARY,
     ConfigError,
 )
 
@@ -34,8 +37,7 @@ SUMMARY_MAX_CHARS = 4000
 # Количество вопросов, генерируемых для экзамена по статье
 EXAM_QUESTION_COUNT = 5
 
-# Параметры генерации ответа модели
-TEMPERATURE = 0.3
+# Таймаут ожидания ответа модели
 REQUEST_TIMEOUT = 120
 
 # Кэш access_token GigaChat: истёкший токен перевыпускается автоматически
@@ -213,8 +215,14 @@ def get_gigachat_token() -> str:
     return cached["access_token"]
 
 
-def ask_llm(system_prompt: str, user_prompt: str) -> str:
-    """Отправляет запрос к языковой модели через выбранный API и возвращает ответ."""
+def ask_llm(
+    system_prompt: str, user_prompt: str, temperature: float
+) -> str:
+    """Отправляет запрос к языковой модели через выбранный API и возвращает ответ.
+
+    temperature — значение температуры генерации для конкретной задачи;
+    подходящие значения определены в модуле config.
+    """
     url = LLM_API_URL.rstrip("/") + "/chat/completions"
 
     if LLM_API_TYPE == "gigachat":
@@ -235,7 +243,7 @@ def ask_llm(system_prompt: str, user_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "temperature": TEMPERATURE,
+        "temperature": temperature,
     }
 
     try:
@@ -268,7 +276,9 @@ def summarize_article(
     final_prompt = _resolve_system_prompt(
         default_prompt, system_prompt, SUMMARY_FORMAT_REQUIREMENTS
     )
-    result = ask_llm(final_prompt, "Текст статьи:\n\n" + article_text)
+    result = ask_llm(
+        final_prompt, "Текст статьи:\n\n" + article_text, TEMPERATURE_SUMMARY
+    )
     return result[:SUMMARY_MAX_CHARS], truncated
 
 
@@ -315,7 +325,9 @@ def generate_exam_questions(
     final_prompt = _resolve_system_prompt(
         default_prompt, system_prompt, EXAM_FORMAT_REQUIREMENTS.format(count=count)
     )
-    result = ask_llm(final_prompt, "Текст статьи:\n\n" + article_text)
+    result = ask_llm(
+        final_prompt, "Текст статьи:\n\n" + article_text, TEMPERATURE_QUESTIONS
+    )
     pairs = _parse_questions(result)
     return pairs, truncated
 
@@ -370,5 +382,5 @@ def grade_exam_answers(
     final_prompt = _resolve_system_prompt(
         GRADE_SYSTEM_PROMPT, system_prompt, GRADE_FORMAT_REQUIREMENTS
     )
-    result = ask_llm(final_prompt, user_prompt)
+    result = ask_llm(final_prompt, user_prompt, TEMPERATURE_GRADING)
     return _parse_grades(result, len(answered_questions))
