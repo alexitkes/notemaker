@@ -119,9 +119,9 @@ def register():
             for message in errors:
                 flash(message, "error")
         else:
-            # Первый зарегистрированный пользователь становится администратором,
-            # все остальные — гостями.
-            role = "administrator" if User.query.count() == 0 else "guest"
+            # Все новые пользователи через регистрацию получают роль «гость».
+            # Администраторы создаются только через create_user.py.
+            role = "guest"
             user = User(username=username, email=email, role=role)
             user.set_password(password)
             db.session.add(user)
