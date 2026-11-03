@@ -6,6 +6,7 @@
 """
 
 import base64
+import logging
 import re
 import time
 import uuid
@@ -39,6 +40,29 @@ REQUEST_TIMEOUT = 120
 
 # Кэш access_token GigaChat: истёкший токен перевыпускается автоматически
 _gigachat_token_cache = {"access_token": None, "expires_at": 0}
+
+logger = logging.getLogger(__name__)
+
+
+def _truncate_article_text(article_text: str) -> tuple[str, bool]:
+    """Обрезает текст статьи до MAX_LLM_INPUT_CHARS при необходимости.
+
+    Возвращает кортеж (текст_после_обрезки, был_ли_обрезан_текст).
+    При обрезке в лог пишется исходная и итоговая длина текста.
+    """
+    if len(article_text) > MAX_LLM_INPUT_CHARS:
+        original_length = len(article_text)
+        article_text = article_text[:MAX_LLM_INPUT_CHARS]
+        truncated = True
+        logger.warning(
+            "Текст статьи обрезан для передачи в LLM: длина %d символов, "
+            "обрезан до %d символов (MAX_LLM_INPUT_CHARS)",
+            original_length,
+            len(article_text),
+        )
+    else:
+        truncated = False
+    return article_text, truncated
 
 # Системный промпт для составления краткого содержания статьи.
 # Плейсхолдер {max_chars} подставляется при вызове модели.
@@ -170,10 +194,7 @@ def summarize_article(article_text: str) -> tuple[str, bool]:
 
     Возвращает кортеж (краткое_содержание, был_ли_обрезан_исходный_текст).
     """
-    truncated = False
-    if len(article_text) > MAX_LLM_INPUT_CHARS:
-        article_text = article_text[:MAX_LLM_INPUT_CHARS]
-        truncated = True
+    article_text, truncated = _truncate_article_text(article_text)
 
     system_prompt = SYSTEM_PROMPT.format(max_chars=SUMMARY_MAX_CHARS)
     result = ask_llm(system_prompt, "Текст статьи:\n\n" + article_text)
@@ -212,10 +233,7 @@ def generate_exam_questions(
 
     Возвращает кортеж (список пар (вопрос, ответ), был_ли_обрезан_текст).
     """
-    truncated = False
-    if len(article_text) > MAX_LLM_INPUT_CHARS:
-        article_text = article_text[:MAX_LLM_INPUT_CHARS]
-        truncated = True
+    article_text, truncated = _truncate_article_text(article_text)
 
     system_prompt = EXAM_SYSTEM_PROMPT.format(count=count)
     result = ask_llm(system_prompt, "Текст статьи:\n\n" + article_text)
@@ -255,8 +273,7 @@ def grade_exam_answers(
     Принимает текст статьи и список пар (текст_вопроса, ответ_студента).
     Возвращает список целых оценок — по одной на каждый вопрос.
     """
-    if len(article_text) > MAX_LLM_INPUT_CHARS:
-        article_text = article_text[:MAX_LLM_INPUT_CHARS]
+    article_text, _truncated = _truncate_article_text(article_text)
 
     blocks = "\n\n".join(
         f"[ВОПРОС {index}]\n{question}\nОтвет студента: {answer}"

@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 from datetime import datetime
 
@@ -41,6 +42,11 @@ from llm_service import (
 )
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = Flask(__name__)
 # Секретный ключ читается из окружения в config.py (в продакшене обязательно
