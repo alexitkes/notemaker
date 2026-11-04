@@ -319,8 +319,6 @@ def exam_create():
         # Текст статьи, перенесённый из предыдущего шага формы: после
         # автоопределения типа повторно загружать файл не требуется
         hidden_text = request.form.get("article_text", "").strip()
-        # Признак того, что автоопределение типа уже выполнено
-        auto_detected = request.form.get("auto_detected") == "1"
         errors = []
 
         if not title:
@@ -340,8 +338,6 @@ def exam_create():
                         errors.append(
                             f"Не удалось извлечь текст из PDF: {exc}"
                         )
-                # Загружен новый файл — автоопределение выполняем заново
-                auto_detected = False
         elif hidden_text:
             article_text = hidden_text
         else:
@@ -358,8 +354,8 @@ def exam_create():
         if type_error:
             errors.append(type_error)
 
-        if not errors and request.form.get("detect_type") and not auto_detected:
-            # Пользователь запросил автоопределение типа статьи:
+        if not errors and request.form.get("action") == "detect_type":
+            # Нажата кнопка «Определить тип статьи автоматически»:
             # определяем тип моделью и снова показываем форму, давая
             # возможность при необходимости скорректировать тип вручную.
             # Вопросы на этом шаге не генерируются.
@@ -380,7 +376,6 @@ def exam_create():
                     article_types=_get_article_types(),
                     title_value=title,
                     article_text_hidden=article_text,
-                    auto_detected=True,
                     detection_message=detection_message,
                     selected_type=article_type,
                 )
@@ -437,7 +432,6 @@ def exam_create():
             request.form.get("title", "") if request.method == "POST" else ""
         ),
         article_text_hidden=article_text,
-        auto_detected=False,
         detection_message=detection_message,
         selected_type=article_type,
     )
