@@ -221,6 +221,26 @@ h1 {
     cursor: not-allowed;
 }
 
+/* Кнопки в состоянии обработки запроса */
+.btn-loading {
+    opacity: 0.6;
+    cursor: progress;
+    animation: btn-loading-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes btn-loading-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 0.3; }
+}
+
+/* Ряд из нескольких кнопок в форме */
+.form-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
 /* ---------- Профиль ---------- */
 .profile {
     margin: 20px 0;

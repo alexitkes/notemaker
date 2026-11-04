@@ -10,14 +10,13 @@
         содержания (не более 4000 символов).
     </p>
 
-    <form method="POST" enctype="multipart/form-data" class="upload-form">
+    <form id="summary-form" method="POST" enctype="multipart/form-data" class="upload-form">
         {% if article_text_hidden %}
             {# Текст статьи уже извлечён на предыдущем шаге — повторная загрузка файла не требуется #}
             <input type="hidden" name="article_text" value="{{ article_text_hidden }}">
         {% endif %}
-        {% if auto_detected %}
-            <input type="hidden" name="auto_detected" value="1">
-        {% endif %}
+        {# Какая кнопка нажата: определение типа или формирование содержания #}
+        <input type="hidden" name="action" id="summary-action" value="summary">
         {% if detection_message %}
             <div class="flash flash-info">{{ detection_message }}</div>
         {% endif %}
@@ -28,18 +27,6 @@
             {% if article_text_hidden %}
                 <p class="muted">Текст статьи уже загружен. Загрузите новый файл, только если хотите заменить статью.</p>
             {% endif %}
-        </div>
-        <div class="form-group">
-            <label>
-                <input type="checkbox" id="detect_type" name="detect_type"
-                       {% if auto_detected %}checked{% endif %}>
-                Определить тип статьи автоматически
-            </label>
-            <p class="muted">
-                Если отметить этот параметр, языковая модель определит тип
-                статьи по её тексту; после этого вы сможете при необходимости
-                скорректировать его вручную.
-            </p>
         </div>
         <div class="form-group">
             <label for="article_type">Тип статьи (необязательно)</label>
@@ -57,9 +44,20 @@
                 будет использован системный промпт этого типа (если он задан).
             </p>
         </div>
-        <button type="submit" class="btn btn-primary">
-            Сформировать краткое содержание
-        </button>
+        <p class="muted">
+            «Определить тип статьи автоматически» — языковая модель определит
+            тип статьи по её тексту; после этого вы сможете при необходимости
+            скорректировать его вручную. «Сформировать краткое содержание» —
+            сразу составит пересказ с учётом выбранного типа.
+        </p>
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary" data-action="summary">
+                Сформировать краткое содержание
+            </button>
+            <button type="submit" class="btn" data-action="detect_type">
+                Определить тип статьи автоматически
+            </button>
+        </div>
     </form>
 </div>
 
@@ -79,6 +77,26 @@
         }
         select.addEventListener('change', update);
         update();
+    })();
+
+    // Запоминает нажатую кнопку и блокирует обе на время обработки
+    (function () {
+        var form = document.getElementById('summary-form');
+        var actionInput = document.getElementById('summary-action');
+        var buttons = form.querySelectorAll('button[type="submit"]');
+
+        buttons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                actionInput.value = button.dataset.action;
+            });
+        });
+
+        form.addEventListener('submit', function () {
+            buttons.forEach(function (button) {
+                button.disabled = true;
+                button.classList.add('btn-loading');
+            });
+        });
     })();
 </script>
 

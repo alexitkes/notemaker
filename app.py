@@ -905,8 +905,6 @@ def summary():
         # Текст статьи, перенесённый из предыдущего шага формы: после
         # автоопределения типа повторно загружать файл не требуется
         hidden_text = request.form.get("article_text", "").strip()
-        # Признак того, что автоопределение типа уже выполнено
-        auto_detected = request.form.get("auto_detected") == "1"
 
         if uploaded is not None and uploaded.filename:
             if not uploaded.filename.lower().endswith(".pdf"):
@@ -921,8 +919,6 @@ def summary():
                     except Exception as exc:
                         article_text = ""
                         error = f"Не удалось извлечь текст из PDF: {exc}"
-                # Загружен новый файл — автоопределение выполняем заново
-                auto_detected = False
         elif hidden_text:
             article_text = hidden_text
         else:
@@ -940,12 +936,8 @@ def summary():
             if type_error:
                 error = type_error
 
-        if (
-            not error
-            and request.form.get("detect_type")
-            and not auto_detected
-        ):
-            # Пользователь запросил автоопределение типа статьи:
+        if not error and request.form.get("action") == "detect_type":
+            # Нажата кнопка «Определить тип статьи автоматически»:
             # определяем тип моделью и снова показываем форму, давая
             # возможность при необходимости скорректировать тип вручную.
             # Краткое содержание на этом шаге не формируется.
@@ -974,7 +966,6 @@ def summary():
                     article_types=_get_article_types(),
                     selected_type=article_type,
                     article_text_hidden=article_text,
-                    auto_detected=True,
                     detection_message=detection_message,
                 )
 
@@ -1008,7 +999,6 @@ def summary():
         article_types=_get_article_types(),
         selected_type=article_type,
         article_text_hidden=article_text if request.method == "POST" else "",
-        auto_detected=False,
         detection_message=detection_message,
     )
 
