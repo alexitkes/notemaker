@@ -1,6 +1,8 @@
 import io
 import logging
 import os
+import re
+from collections import Counter
 from datetime import datetime
 
 from pypdf import PdfReader
@@ -1019,17 +1021,68 @@ def request_entity_too_large(_error):
 
 
 # --- Вспомогательные функции для работы с PDF ------------------------------
+# Строка-номер страницы: «12», «- 12 -», «Стр. 12», «Page 12 of 34» и т.п.
+_PAGE_NUMBER_RE = re.compile(
+    r"^(?:[-–—\s]*|(?:стр\.?|ст\.|с\.|page|p\.?)\s*[-–—\s]*)"
+    r"\d{1,4}(?:\s*(?:/|из|of)\s*\d{1,4})?[-–—\s]*$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_footer_line(line: str) -> str:
+    """Нормализует строку для сравнения колонтитулов (цифры -> «#»)."""
+    return re.sub(r"\d+", "#", line.strip().lower())
+
+
+def _is_page_number_line(line: str) -> bool:
+    return bool(_PAGE_NUMBER_RE.match(line.strip()))
+
+
 def extract_pdf_text(raw: bytes) -> str:
-    """Извлекает текстовое содержимое из PDF-файла."""
+    """Извлекает текстовое содержимое из PDF-файла.
+
+    Помимо объединения текста страниц удаляются типичные элементы
+    оформления PDF, которые не являются частью статьи:
+    * строки, состоящие только из номера страницы (нижние колонтитулы);
+    * строки, повторяющиеся на большинстве страниц в начале или в конце
+      (верхние и нижние колонтитулы — название журнала, авторы и т.п.).
+    """
     reader = PdfReader(io.BytesIO(raw))
-    pages = []
+
+    # Сначала разбираем каждую страницу на непустые строки
+    page_lines = []
     for page in reader.pages:
         page_text = page.extract_text() or ""
-        cleaned = "\n".join(
-            line.strip() for line in page_text.splitlines() if line.strip()
-        )
+        lines = [line.strip() for line in page_text.splitlines() if line.strip()]
+        page_lines.append(lines)
+
+    # Ищем повторяющиеся колонтитулы: нормализованные первые/последние
+    # строки страниц, встречающиеся минимум на половине страниц.
+    repeated = set()
+    if len(page_lines) >= 3:
+        threshold = max(2, len(page_lines) // 2)
+        edge_counts = Counter()
+        for lines in page_lines:
+            if not lines:
+                continue
+            edge_counts[_normalize_footer_line(lines[0])] += 1
+            edge_counts[_normalize_footer_line(lines[-1])] += 1
+        repeated = {
+            normalized
+            for normalized, count in edge_counts.items()
+            if count >= threshold
+        }
+
+    pages = []
+    for lines in page_lines:
+        cleaned = [
+            line
+            for line in lines
+            if not _is_page_number_line(line)
+            and _normalize_footer_line(line) not in repeated
+        ]
         if cleaned:
-            pages.append(cleaned)
+            pages.append("\n".join(cleaned))
     return "\n\n".join(pages)
 
 
