@@ -36,6 +36,19 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
 
 
+def _env_float(name: str, default: str) -> float:
+    """Читает дробную переменную окружения с понятной ошибкой."""
+    raw = _env(name, default)
+    try:
+        value = float(raw.replace(",", "."))
+    except ValueError:
+        raise ConfigError(
+            f"Переменная окружения {name} должна быть числом, "
+            f"получено: '{raw}'."
+        ) from None
+    return value
+
+
 def _env_int(name: str, default: str) -> int:
     """Читает целочисленную переменную окружения с понятной ошибкой."""
     raw = _env(name, default)
@@ -130,22 +143,38 @@ MAX_LLM_INPUT_CHARS = _env_int("MAX_LLM_INPUT_CHARS", "75000")
 # ---------------------------------------------------------------------------
 # Температура генерации для разных задач LLM
 # ---------------------------------------------------------------------------
-# Чем меньше температура, тем детерминированнее и строже ответы модели.
+# Температуры задаются переменными окружения TEMPERATURE_* и должны
+# находиться в диапазоне от 0 до 2. Чем меньше температура, тем
+# детерминированнее и строже ответы модели.
+
 # Проверка ответов студента — самая формальная задача, нужен минимум
 # «творчества» и строгий соблюдаемый формат вывода.
-TEMPERATURE_GRADING = 0.1
+TEMPERATURE_GRADING = _env_float("TEMPERATURE_GRADING", "0.1")
 
 # Определение типа статьи — задача классификации с строгим форматом
 # ответа (название типа или пустая строка), нужна минимальная температура.
-TEMPERATURE_TYPE_DETECTION = 0.1
+TEMPERATURE_TYPE_DETECTION = _env_float("TEMPERATURE_TYPE_DETECTION", "0.1")
 
 # Составление краткого содержания — по связному тексту допустима
 # умеренная вариативность формулировок.
-TEMPERATURE_SUMMARY = 0.3
+TEMPERATURE_SUMMARY = _env_float("TEMPERATURE_SUMMARY", "0.3")
 
 # Генерация экзаменационных вопросов — требуется разнообразие формулировок,
-# поэтому температура наибольшая из трёх.
-TEMPERATURE_QUESTIONS = 0.5
+# поэтому температура по умолчанию наибольшая из четырёх.
+TEMPERATURE_QUESTIONS = _env_float("TEMPERATURE_QUESTIONS", "0.5")
+
+for _temp_name, _temp_value in (
+    ("TEMPERATURE_GRADING", TEMPERATURE_GRADING),
+    ("TEMPERATURE_TYPE_DETECTION", TEMPERATURE_TYPE_DETECTION),
+    ("TEMPERATURE_SUMMARY", TEMPERATURE_SUMMARY),
+    ("TEMPERATURE_QUESTIONS", TEMPERATURE_QUESTIONS),
+):
+    if not 0 <= _temp_value <= 2:
+        raise ConfigError(
+            f"Переменная окружения {_temp_name} должна быть числом "
+            f"от 0 до 2, получено: {_temp_value}."
+        )
+del _temp_name, _temp_value
 
 # Секретный ключ Flask для подписи сессий
 SECRET_KEY = _env("SECRET_KEY", "dev-secret-key-change-me")
