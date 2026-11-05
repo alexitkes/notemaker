@@ -1,3 +1,4 @@
+import argparse
 import io
 import logging
 import os
@@ -1096,5 +1097,32 @@ with app.app_context():
     db.create_all()
     _ensure_exam_article_type_column()
 
+def _parse_args() -> argparse.Namespace:
+    """Разбирает аргументы командной строки для запуска сервера."""
+    parser = argparse.ArgumentParser(
+        description="Запуск веб-приложения Notemaker (Flask).",
+    )
+    parser.add_argument(
+        "--public",
+        action="store_true",
+        help=(
+            "принимать нелокальные подключения "
+            "(слушать 0.0.0.0 вместо 127.0.0.1)"
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5000,
+        help="порт для запуска сервера (по умолчанию: 5000)",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    args = _parse_args()
+    app.run(
+        host="0.0.0.0" if args.public else "127.0.0.1",
+        port=args.port,
+        debug=True,
+    )
